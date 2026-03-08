@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { MessageCircle, Sparkles, BookOpen, Heart } from "lucide-react";
+import { MessageCircle, Sparkles, BookOpen, Heart, Phone } from "lucide-react";
 import krishnaImg from "@/assets/krishna-hero.jpg";
 
 const floatingIcons = [
