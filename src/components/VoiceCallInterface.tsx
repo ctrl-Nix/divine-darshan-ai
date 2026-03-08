@@ -206,7 +206,7 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
         const audio = new Audio(objectUrl);
         audio.preload = "auto";
         audio.volume = 1;
-        audio.playsInline = true;
+        audio.setAttribute("playsinline", "true");
         activeAudioRef.current = audio;
         activeAudioUrlRef.current = objectUrl;
 
