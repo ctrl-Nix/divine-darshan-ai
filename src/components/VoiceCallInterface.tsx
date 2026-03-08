@@ -14,10 +14,11 @@ const stripMarkdownForSpeech = (text: string) =>
     .replace(/\[.*?\]\(.*?\)/g, "")
     .replace(/🙏.*$/gm, "")
     .replace(/\n{2,}/g, "\n")
-    .replace(/\bGita\b/gi, "Geeta")
-    .replace(/\bRadhe\b/gi, "Radhey")
-    .replace(/\bShloka?\b/gi, "Shloak")
-    .replace(/\bBhagavad\b/gi, "Bhuguvud")
+    .replace(/\bGita\b/gi, "Gee-ta")
+    .replace(/\bRadhe\b/gi, "Raa-dhey")
+    .replace(/\bShloka?\b/gi, "Shlo-k")
+    .replace(/\bBhagavad\b/gi, "Bhagavad")
+    .replace(/\bKrishna\b/gi, "Krish-na")
     .trim();
 
 /** Pick best supported mime type for MediaRecorder */
