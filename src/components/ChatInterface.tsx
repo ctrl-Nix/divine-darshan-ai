@@ -1,7 +1,8 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Mic, Send, ArrowLeft, Sparkles } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import { toast } from "sonner";
 
 type Message = {
   id: string;
@@ -9,11 +10,64 @@ type Message = {
   content: string;
 };
 
-const GITA_QUOTES = [
-  "कर्मण्येवाधिकारस्ते मा फलेषु कदाचन। — अध्याय 2, श्लोक 47",
-  "योगस्थः कुरु कर्माणि सङ्गं त्यक्त्वा धनञ्जय। — अध्याय 2, श्लोक 48",
-  "वासांसि जीर्णानि यथा विहाय... — अध्याय 2, श्लोक 22",
-];
+const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/gita-chat`;
+
+async function streamChat({
+  messages,
+  onDelta,
+  onDone,
+}: {
+  messages: { role: string; content: string }[];
+  onDelta: (text: string) => void;
+  onDone: () => void;
+}) {
+  const resp = await fetch(CHAT_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+    },
+    body: JSON.stringify({ messages }),
+  });
+
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.error || `Request failed: ${resp.status}`);
+  }
+
+  if (!resp.body) throw new Error("No response body");
+
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let streamDone = false;
+
+  while (!streamDone) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    let newlineIdx: number;
+    while ((newlineIdx = buffer.indexOf("\n")) !== -1) {
+      let line = buffer.slice(0, newlineIdx);
+      buffer = buffer.slice(newlineIdx + 1);
+      if (line.endsWith("\r")) line = line.slice(0, -1);
+      if (line.startsWith(":") || line.trim() === "") continue;
+      if (!line.startsWith("data: ")) continue;
+      const jsonStr = line.slice(6).trim();
+      if (jsonStr === "[DONE]") { streamDone = true; break; }
+      try {
+        const parsed = JSON.parse(jsonStr);
+        const content = parsed.choices?.[0]?.delta?.content as string | undefined;
+        if (content) onDelta(content);
+      } catch {
+        buffer = line + "\n" + buffer;
+        break;
+      }
+    }
+  }
+  onDone();
+}
 
 const ChatInterface = ({ onBack }: { onBack: () => void }) => {
   const [messages, setMessages] = useState<Message[]>([
@@ -34,35 +88,49 @@ const ChatInterface = ({ onBack }: { onBack: () => void }) => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const handleSend = async () => {
+  const handleSend = useCallback(async () => {
     if (!input.trim() || isLoading) return;
 
-    const userMsg: Message = {
-      id: Date.now().toString(),
-      role: "user",
-      content: input.trim(),
-    };
-
-    setMessages((prev) => [...prev, userMsg]);
+    const userMsg: Message = { id: Date.now().toString(), role: "user", content: input.trim() };
+    const newMessages = [...messages, userMsg];
+    setMessages(newMessages);
     setInput("");
     setIsLoading(true);
 
-    // Simulated response (will be replaced with Gemini API)
-    setTimeout(() => {
-      const quote = GITA_QUOTES[Math.floor(Math.random() * GITA_QUOTES.length)];
-      const response: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: `🙏 पार्थ, आपकी चिंता समझ सकता हूँ।\n\nगीता कहती है:\n\n> *${quote}*\n\nइसका अर्थ है कि आपको अपने कर्म पर ध्यान देना चाहिए, फल की चिंता नहीं। जब आप निष्काम भाव से कर्म करते हैं, तो सारी चिंताएं स्वयं समाप्त हो जाती हैं।\n\n**याद रखिए — मैं हमेशा आपके साथ हूँ।** 🙏`,
-      };
-      setMessages((prev) => [...prev, response]);
+    let assistantSoFar = "";
+    const upsertAssistant = (chunk: string) => {
+      assistantSoFar += chunk;
+      const content = assistantSoFar;
+      setMessages((prev) => {
+        const last = prev[prev.length - 1];
+        if (last?.role === "assistant" && last.id === "streaming") {
+          return prev.map((m, i) => i === prev.length - 1 ? { ...m, content } : m);
+        }
+        return [...prev, { id: "streaming", role: "assistant", content }];
+      });
+    };
+
+    try {
+      await streamChat({
+        messages: newMessages.map((m) => ({ role: m.role, content: m.content })),
+        onDelta: upsertAssistant,
+        onDone: () => {
+          setIsLoading(false);
+          setMessages((prev) =>
+            prev.map((m) => m.id === "streaming" ? { ...m, id: Date.now().toString() } : m)
+          );
+        },
+      });
+    } catch (e: any) {
+      console.error(e);
+      toast.error(e.message || "कुछ गलत हो गया, पुनः प्रयास करें");
       setIsLoading(false);
-    }, 1500);
-  };
+    }
+  }, [input, isLoading, messages]);
 
   const toggleListening = () => {
     setIsListening(!isListening);
-    // Voice recognition will be integrated with Sarvam AI
+    toast.info("🎙️ Voice integration coming soon with Sarvam AI!");
   };
 
   return (
@@ -122,15 +190,11 @@ const ChatInterface = ({ onBack }: { onBack: () => void }) => {
           ))}
         </AnimatePresence>
 
-        {isLoading && (
+        {isLoading && messages[messages.length - 1]?.role !== "assistant" && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start">
             <div className="bg-card border border-border rounded-2xl rounded-bl-md px-5 py-4 flex gap-1.5">
               {[0, 1, 2].map((i) => (
-                <div
-                  key={i}
-                  className="w-2 h-2 rounded-full bg-primary/60 animate-bounce"
-                  style={{ animationDelay: `${i * 0.15}s` }}
-                />
+                <div key={i} className="w-2 h-2 rounded-full bg-primary/60 animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
               ))}
             </div>
           </motion.div>
@@ -174,11 +238,7 @@ const ChatInterface = ({ onBack }: { onBack: () => void }) => {
         </div>
 
         {isListening && (
-          <motion.p
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="text-center text-xs text-saffron font-body mt-2"
-          >
+          <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center text-xs text-saffron font-body mt-2">
             🎙️ सुन रहा हूँ... बोलिए
           </motion.p>
         )}
