@@ -10,7 +10,7 @@ const floatingIcons = [
   { icon: "✨", x: "50%", y: "10%", delay: 0.8, duration: 5 },
 ];
 
-const HeroSection = ({ onStartChat }: { onStartChat: () => void }) => {
+const HeroSection = ({ onStartChat, onStartCall }: { onStartChat: () => void; onStartCall: () => void }) => {
   return (
     <section className="relative min-h-screen flex items-center justify-center overflow-hidden bg-gradient-cosmic">
       {/* Ambient glow effects */}
