@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Mic, Send, ArrowLeft, Sparkles } from "lucide-react";
+import { Send, ArrowLeft, Sparkles } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { toast } from "sonner";
+import VoiceButton from "./VoiceButton";
 
 type Message = {
   id: string;
@@ -69,18 +70,25 @@ async function streamChat({
   onDone();
 }
 
+const SUGGESTIONS = [
+  "मुझे stress बहुत हो रहा है",
+  "Life का purpose क्या है?",
+  "I'm feeling lost in career",
+  "Anger control कैसे करें?",
+];
+
 const ChatInterface = ({ onBack }: { onBack: () => void }) => {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "welcome",
       role: "assistant",
       content:
-        "🙏 हरे कृष्ण! मैं कृष्ण हूँ, आपका मार्गदर्शक।\n\nअपनी कोई भी समस्या बताइए — चाहे वो तनाव हो, भय हो, क्रोध हो, या जीवन का कोई भी प्रश्न। **गीता में हर उत्तर है।**\n\nबोलिए या लिखिए, मैं सुन रहा हूँ... 🙏",
+        "🙏 **Jai Shri Krishna!** मैं आपका Gita guide हूँ — एक कृष्ण भक्त द्वारा बनाया गया।\n\nLife में कोई भी problem हो — stress, fear, anger, confusion — **गीता में हर answer है।**\n\nType करें, बोलें, या नीचे दिए suggestions try करें! 🙏",
     },
   ]);
   const [input, setInput] = useState("");
-  const [isListening, setIsListening] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -88,14 +96,15 @@ const ChatInterface = ({ onBack }: { onBack: () => void }) => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const handleSend = useCallback(async () => {
-    if (!input.trim() || isLoading) return;
+  const sendMessage = useCallback(async (text: string) => {
+    if (!text.trim() || isLoading) return;
 
-    const userMsg: Message = { id: Date.now().toString(), role: "user", content: input.trim() };
+    const userMsg: Message = { id: Date.now().toString(), role: "user", content: text.trim() };
     const newMessages = [...messages, userMsg];
     setMessages(newMessages);
     setInput("");
     setIsLoading(true);
+    setShowSuggestions(false);
 
     let assistantSoFar = "";
     const upsertAssistant = (chunk: string) => {
@@ -126,12 +135,15 @@ const ChatInterface = ({ onBack }: { onBack: () => void }) => {
       toast.error(e.message || "कुछ गलत हो गया, पुनः प्रयास करें");
       setIsLoading(false);
     }
-  }, [input, isLoading, messages]);
+  }, [isLoading, messages]);
 
-  const toggleListening = () => {
-    setIsListening(!isListening);
-    toast.info("🎙️ Voice integration coming soon with Sarvam AI!");
-  };
+  const handleSend = useCallback(() => sendMessage(input), [input, sendMessage]);
+
+  const handleVoiceResult = useCallback((text: string) => {
+    setInput(text);
+    // Auto-send after voice input
+    sendMessage(text);
+  }, [sendMessage]);
 
   return (
     <motion.div
@@ -145,27 +157,40 @@ const ChatInterface = ({ onBack }: { onBack: () => void }) => {
         <button onClick={onBack} className="text-muted-foreground hover:text-foreground transition-colors">
           <ArrowLeft size={20} />
         </button>
-        <div className="w-10 h-10 rounded-full bg-gradient-divine flex items-center justify-center shadow-divine">
+        <motion.div
+          className="w-10 h-10 rounded-full bg-gradient-divine flex items-center justify-center shadow-divine"
+          animate={{ rotate: [0, 5, -5, 0] }}
+          transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+        >
           <Sparkles size={18} className="text-primary-foreground" />
+        </motion.div>
+        <div className="flex-1">
+          <h2 className="font-display font-semibold text-foreground text-lg">Gita Guide</h2>
+          <p className="text-xs text-peacock font-body">Powered by Gita Wisdom • Always Available</p>
         </div>
-        <div>
-          <h2 className="font-display font-semibold text-foreground text-lg">श्री कृष्ण</h2>
-          <p className="text-xs text-peacock font-body">गीता AI • सदैव उपलब्ध</p>
+        <div className="flex items-center gap-1.5">
+          <div className="w-2 h-2 rounded-full bg-peacock animate-pulse" />
+          <span className="text-xs text-muted-foreground font-body">Online</span>
         </div>
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 md:px-6 py-6 space-y-6">
+      <div className="flex-1 overflow-y-auto px-4 md:px-6 py-6 space-y-5">
         <AnimatePresence>
           {messages.map((msg) => (
             <motion.div
               key={msg.id}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
+              initial={{ opacity: 0, y: 10, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
               className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
             >
+              {msg.role === "assistant" && (
+                <div className="w-8 h-8 rounded-full bg-gradient-divine flex items-center justify-center mr-3 mt-1 flex-shrink-0 shadow-divine">
+                  <span className="text-sm">🙏</span>
+                </div>
+              )}
               <div
-                className={`max-w-[85%] md:max-w-[70%] px-5 py-4 rounded-2xl font-body text-sm md:text-base leading-relaxed ${
+                className={`max-w-[80%] md:max-w-[65%] px-5 py-4 rounded-2xl font-body text-sm md:text-base leading-relaxed ${
                   msg.role === "user"
                     ? "bg-primary/20 text-foreground rounded-br-md border border-primary/20"
                     : "bg-card text-card-foreground rounded-bl-md border border-border"
@@ -190,8 +215,33 @@ const ChatInterface = ({ onBack }: { onBack: () => void }) => {
           ))}
         </AnimatePresence>
 
+        {/* Suggestions */}
+        {showSuggestions && messages.length === 1 && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.5 }}
+            className="flex flex-wrap gap-2 justify-center pt-4"
+          >
+            {SUGGESTIONS.map((s) => (
+              <motion.button
+                key={s}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => sendMessage(s)}
+                className="px-4 py-2 rounded-xl border border-primary/20 bg-card/50 text-sm font-body text-foreground/80 hover:border-primary/40 hover:bg-primary/5 transition-all"
+              >
+                {s}
+              </motion.button>
+            ))}
+          </motion.div>
+        )}
+
         {isLoading && messages[messages.length - 1]?.role !== "assistant" && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start">
+            <div className="w-8 h-8 rounded-full bg-gradient-divine flex items-center justify-center mr-3 flex-shrink-0">
+              <span className="text-sm">🙏</span>
+            </div>
             <div className="bg-card border border-border rounded-2xl rounded-bl-md px-5 py-4 flex gap-1.5">
               {[0, 1, 2].map((i) => (
                 <div key={i} className="w-2 h-2 rounded-full bg-primary/60 animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
@@ -206,24 +256,14 @@ const ChatInterface = ({ onBack }: { onBack: () => void }) => {
       {/* Input */}
       <div className="px-4 md:px-6 py-4 border-t border-border bg-card/30 backdrop-blur-lg">
         <div className="flex items-center gap-3 max-w-3xl mx-auto">
-          <motion.button
-            whileTap={{ scale: 0.9 }}
-            onClick={toggleListening}
-            className={`p-3 rounded-xl transition-all duration-300 ${
-              isListening
-                ? "bg-saffron text-primary-foreground shadow-divine animate-pulse"
-                : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
-            }`}
-          >
-            <Mic size={20} />
-          </motion.button>
+          <VoiceButton onResult={handleVoiceResult} />
 
           <input
             ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleSend()}
-            placeholder="अपनी समस्या बताइए..."
+            placeholder="Ask anything... कुछ भी पूछें..."
             className="flex-1 bg-secondary border border-border rounded-xl px-5 py-3 font-body text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/50 transition-all"
           />
 
@@ -236,12 +276,6 @@ const ChatInterface = ({ onBack }: { onBack: () => void }) => {
             <Send size={20} />
           </motion.button>
         </div>
-
-        {isListening && (
-          <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center text-xs text-saffron font-body mt-2">
-            🎙️ सुन रहा हूँ... बोलिए
-          </motion.p>
-        )}
       </div>
     </motion.div>
   );
