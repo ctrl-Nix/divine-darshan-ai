@@ -153,7 +153,7 @@ const ChatInterface = ({ onBack }: { onBack: () => void }) => {
       className="flex flex-col h-screen bg-background"
     >
       {/* Header */}
-      <div className="flex items-center gap-4 px-6 py-4 border-b border-border bg-card/50 backdrop-blur-lg">
+      <div className="flex items-center gap-4 px-6 py-4 border-b border-border bg-card/50 backdrop-blur-xl">
         <button onClick={onBack} className="text-muted-foreground hover:text-foreground transition-colors">
           <ArrowLeft size={20} />
         </button>
@@ -162,14 +162,18 @@ const ChatInterface = ({ onBack }: { onBack: () => void }) => {
           animate={{ rotate: [0, 5, -5, 0] }}
           transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
         >
-          <Sparkles size={18} className="text-primary-foreground" />
+          <span className="text-lg">🙏</span>
         </motion.div>
         <div className="flex-1">
           <h2 className="font-display font-semibold text-foreground text-lg">Gita Guide</h2>
           <p className="text-xs text-peacock font-body">Powered by Gita Wisdom • Always Available</p>
         </div>
         <div className="flex items-center gap-1.5">
-          <div className="w-2 h-2 rounded-full bg-peacock animate-pulse" />
+          <motion.div
+            className="w-2 h-2 rounded-full bg-peacock"
+            animate={{ scale: [1, 1.3, 1], opacity: [0.7, 1, 0.7] }}
+            transition={{ duration: 2, repeat: Infinity }}
+          />
           <span className="text-xs text-muted-foreground font-body">Online</span>
         </div>
       </div>
