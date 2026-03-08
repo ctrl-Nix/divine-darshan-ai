@@ -10,7 +10,7 @@ serve(async (req) => {
 
   try {
     const { text, language_code } = await req.json();
-    const speaker = language_code === "en-IN" ? "maya" : "anushka";
+    const speaker = language_code === "en-IN" ? "advait" : "kabir";
 
     const apiKey = Deno.env.get("SARVAM_API_KEY");
     if (!apiKey) {
@@ -31,7 +31,7 @@ serve(async (req) => {
         target_language_code: language_code ?? "hi-IN",
         speaker,
         model: "bulbul:v2",
-        pace: 0.85,
+        pace: 0.8,
         enable_preprocessing: true,
       }),
     });

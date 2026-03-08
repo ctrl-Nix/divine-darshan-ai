@@ -107,7 +107,7 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
       });
 
       const { data: sttData, error: sttError } = await supabase.functions.invoke("sarvam-stt", {
-        body: { audio: base64, language_code: voiceLang, model: "saarika:v2" },
+        body: { audio: base64, language_code: voiceLang, model: "saarika:v2.5" },
       });
       if (sttError) throw sttError;
 
