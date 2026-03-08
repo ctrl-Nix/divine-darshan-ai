@@ -8,18 +8,31 @@ import ReactMarkdown from "react-markdown";
 type CallLang = "en" | "hi";
 type VoiceLang = "en-IN" | "hi-IN";
 
-const stripMarkdownForSpeech = (text: string) =>
+const cleanMarkdownForSpeech = (text: string) =>
   text
     .replace(/[*#>_~`]/g, "")
     .replace(/\[.*?\]\(.*?\)/g, "")
     .replace(/🙏.*$/gm, "")
     .replace(/\n{2,}/g, "\n")
+    .trim();
+
+const normalizeSpeechText = (text: string, voiceLang: VoiceLang) => {
+  const cleaned = cleanMarkdownForSpeech(text);
+
+  if (voiceLang === "hi-IN") {
+    return cleaned
+      .replace(/Bhagavad\s+Gita\s*,?\s*Chapter\s*(\d+)\s*,?\s*Verse\s*(\d+)/gi, "भगवद गीता अध्याय $1 श्लोक $2")
+      .replace(/\bRadhe\s+Radhe\b/gi, "राधे राधे")
+      .replace(/\bJai\s+Shri\s+Krishna\b/gi, "जय श्री कृष्ण");
+  }
+
+  return cleaned
     .replace(/\bGita\b/gi, "Gee-ta")
     .replace(/\bRadhe\b/gi, "Raa-dhey")
     .replace(/\bShloka?\b/gi, "Shlo-k")
     .replace(/\bBhagavad\b/gi, "Bhagavad")
-    .replace(/\bKrishna\b/gi, "Krish-na")
-    .trim();
+    .replace(/\bKrishna\b/gi, "Krish-na");
+};
 
 /** Pick best supported mime type for MediaRecorder */
 const getRecorderMime = (): string => {
@@ -74,6 +87,7 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
   const hardStopTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
   const activeUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const activeAudioRef = useRef<HTMLAudioElement | null>(null);
+  const activeAudioUrlRef = useRef<string | null>(null);
   // Track if we've "unlocked" speech on iOS via user gesture
   const speechUnlockedRef = useRef(false);
 
@@ -93,11 +107,18 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
     activeUtteranceRef.current = null;
 
     if (activeAudioRef.current) {
+      activeAudioRef.current.onended = null;
+      activeAudioRef.current.onerror = null;
       activeAudioRef.current.pause();
       activeAudioRef.current.currentTime = 0;
       activeAudioRef.current.src = "";
       activeAudioRef.current.load();
       activeAudioRef.current = null;
+    }
+
+    if (activeAudioUrlRef.current) {
+      URL.revokeObjectURL(activeAudioUrlRef.current);
+      activeAudioUrlRef.current = null;
     }
 
     window.speechSynthesis?.cancel();
@@ -131,7 +152,7 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
   const playServerTts = useCallback(async (rawText: string): Promise<boolean> => {
     if (isEndingRef.current) return false;
 
-    const text = stripMarkdownForSpeech(rawText);
+    const text = normalizeSpeechText(rawText, voiceLang);
     if (!text) return false;
 
     const { data, error } = await supabase.functions.invoke("sarvam-tts", {
@@ -143,41 +164,76 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
       return false;
     }
 
-    const payload = data as { audioContent?: string; mimeType?: string } | null;
-    const audioContent = payload?.audioContent;
-    if (!audioContent) return false;
+    const payload = data as { audios?: string[]; audioContent?: string; mimeType?: string } | null;
+    const audioChunks = Array.isArray(payload?.audios)
+      ? payload.audios.filter((chunk): chunk is string => typeof chunk === "string" && chunk.length > 0)
+      : typeof payload?.audioContent === "string" && payload.audioContent.length > 0
+        ? [payload.audioContent]
+        : [];
+
+    if (!audioChunks.length) return false;
 
     const mimeType = payload?.mimeType || "audio/wav";
 
-    return await new Promise<boolean>((resolve) => {
-      let settled = false;
-      const finish = (ok: boolean) => {
-        if (settled) return;
-        settled = true;
-        resolve(ok);
-      };
+    const playChunk = (base64Audio: string): Promise<boolean> =>
+      new Promise<boolean>((resolve) => {
+        let settled = false;
 
-      const audio = new Audio(`data:${mimeType};base64,${audioContent}`);
-      audio.preload = "auto";
-      audio.volume = 1;
-      activeAudioRef.current = audio;
+        const finish = (ok: boolean) => {
+          if (settled) return;
+          settled = true;
+          resolve(ok);
+        };
 
-      audio.onended = () => {
-        if (activeAudioRef.current === audio) activeAudioRef.current = null;
-        finish(!isEndingRef.current);
-      };
+        let objectUrl: string;
+        try {
+          const binary = Uint8Array.from(atob(base64Audio), (c) => c.charCodeAt(0));
+          const blob = new Blob([binary], { type: mimeType });
+          objectUrl = URL.createObjectURL(blob);
+        } catch {
+          finish(false);
+          return;
+        }
 
-      audio.onerror = () => {
-        if (activeAudioRef.current === audio) activeAudioRef.current = null;
-        finish(false);
-      };
+        const clearActiveAudio = (audio: HTMLAudioElement) => {
+          if (activeAudioRef.current === audio) activeAudioRef.current = null;
+          if (activeAudioUrlRef.current === objectUrl) {
+            URL.revokeObjectURL(objectUrl);
+            activeAudioUrlRef.current = null;
+          }
+        };
 
-      audio.play().catch((err) => {
-        console.warn("audio play blocked/failed, falling back to browser TTS", err);
-        if (activeAudioRef.current === audio) activeAudioRef.current = null;
-        finish(false);
+        const audio = new Audio(objectUrl);
+        audio.preload = "auto";
+        audio.volume = 1;
+        audio.playsInline = true;
+        activeAudioRef.current = audio;
+        activeAudioUrlRef.current = objectUrl;
+
+        audio.onended = () => {
+          clearActiveAudio(audio);
+          finish(!isEndingRef.current);
+        };
+
+        audio.onerror = () => {
+          clearActiveAudio(audio);
+          finish(false);
+        };
+
+        audio.play().catch((err) => {
+          console.warn("audio play blocked/failed, falling back to browser TTS", err);
+          clearActiveAudio(audio);
+          finish(false);
+        });
       });
-    });
+
+    for (const chunk of audioChunks) {
+      if (isEndingRef.current) return false;
+      const ok = await playChunk(chunk);
+      if (!ok) return false;
+    }
+
+    return !isEndingRef.current;
   }, [voiceLang]);
 
   const speakText = useCallback(async (text: string): Promise<void> => {
