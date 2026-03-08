@@ -32,7 +32,7 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
   const isEndingRef = useRef(false);
   const activeRecordTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const audioUrlRef = useRef<string | null>(null);
+  const synthRef = useRef<SpeechSynthesisUtterance | null>(null);
   const analyserCleanupRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
@@ -45,87 +45,106 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
   const formatTime = (s: number) =>
     `${Math.floor(s / 60).toString().padStart(2, "0")}:${(s % 60).toString().padStart(2, "0")}`;
 
-  const stopAudio = useCallback(() => {
-    if (audioRef.current) {
-      audioRef.current.onended = null;
-      audioRef.current.onerror = null;
-      audioRef.current.pause();
-      audioRef.current = null;
-    }
-    if (audioUrlRef.current) {
-      URL.revokeObjectURL(audioUrlRef.current);
-      audioUrlRef.current = null;
-    }
-  }, []);
-
-  // ─── Sarvam TTS-only speakText (no browser speechSynthesis) ───
-  const speakText = useCallback(async (rawText: string): Promise<void> => {
+  // ─── speakText: Sarvam TTS first, browser speechSynthesis fallback ───
+  const speakText = useCallback(async (text: string): Promise<void> => {
     if (isEndingRef.current) return;
 
-    const text = cleanTextForSpeech(rawText);
-    if (!text) return;
+    const cleanedText = cleanTextForSpeech(text);
+    if (!cleanedText) return;
 
+    // Try Sarvam TTS first
     try {
       const { data, error } = await supabase.functions.invoke("sarvam-tts", {
-        body: { text, language_code: voiceLang },
+        body: { text: cleanedText, language_code: voiceLang },
       });
-
-      if (error) {
-        console.error("sarvam-tts error:", error);
-        toast.error(chatLang === "hi" ? "आवाज़ चालू नहीं हो पाई।" : "Voice playback failed.");
-        return;
-      }
-
-      const payload = data as { audio?: string } | null;
-      const base64Audio = payload?.audio;
-      if (!base64Audio) {
-        console.error("No audio in TTS response");
-        return;
-      }
-
-      if (isEndingRef.current) return;
-
-      const binary = Uint8Array.from(atob(base64Audio), (c) => c.charCodeAt(0));
-      const blob = new Blob([binary], { type: "audio/wav" });
-      const objectUrl = URL.createObjectURL(blob);
-
-      await new Promise<void>((resolve) => {
-        if (isEndingRef.current) {
-          URL.revokeObjectURL(objectUrl);
-          resolve();
-          return;
-        }
-
-        const audio = new Audio(objectUrl);
-        audio.preload = "auto";
-        audio.volume = 1;
+      if (error) throw error;
+      if (data?.audio) {
+        const byteChars = atob(data.audio);
+        const byteArray = new Uint8Array(byteChars.length);
+        for (let i = 0; i < byteChars.length; i++) byteArray[i] = byteChars.charCodeAt(i);
+        const blob = new Blob([byteArray], { type: "audio/wav" });
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
         audio.setAttribute("playsinline", "true");
         audioRef.current = audio;
-        audioUrlRef.current = objectUrl;
-
-        audio.onended = () => {
-          stopAudio();
-          resolve();
-        };
-
-        audio.onerror = () => {
-          console.error("Audio playback error");
-          stopAudio();
-          resolve();
-        };
-
-        audio.play().catch((err) => {
-          console.warn("audio play blocked:", err);
-          stopAudio();
-          resolve();
+        return new Promise<void>((resolve) => {
+          audio.onended = () => { URL.revokeObjectURL(url); audioRef.current = null; resolve(); };
+          audio.onerror = () => { URL.revokeObjectURL(url); audioRef.current = null; resolve(); };
+          audio.play().catch(() => { URL.revokeObjectURL(url); audioRef.current = null; resolve(); });
         });
-      });
-    } catch (err) {
-      console.error("speakText error:", err);
+      }
+    } catch (e) {
+      console.warn("Sarvam TTS failed, falling back to browser TTS", e);
     }
-  }, [voiceLang, chatLang, stopAudio]);
 
-  // ─── Recording with smart silence detection ───
+    if (isEndingRef.current) return;
+
+    // Fallback: browser speechSynthesis
+    return new Promise<void>((resolve) => {
+      if (!window.speechSynthesis) { resolve(); return; }
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(cleanedText);
+      utterance.lang = voiceLang;
+      utterance.rate = 0.92;
+      utterance.pitch = 1.0;
+      synthRef.current = utterance;
+      utterance.onend = () => { synthRef.current = null; resolve(); };
+      utterance.onerror = () => { synthRef.current = null; resolve(); };
+      window.speechSynthesis.speak(utterance);
+    });
+  }, [voiceLang]);
+
+  // ─── processAudio: STT → AI → TTS → listen again ───
+  const processAudio = useCallback(async (blob: Blob) => {
+    if (isEndingRef.current) return;
+    setStatus("thinking");
+
+    try {
+      const reader = new FileReader();
+      const base64 = await new Promise<string>((resolve) => {
+        reader.onloadend = () => resolve((reader.result as string).split(",")[1]);
+        reader.readAsDataURL(blob);
+      });
+
+      const { data: sttData, error: sttError } = await supabase.functions.invoke("sarvam-stt", {
+        body: { audio: base64, language_code: voiceLang, model: "saarika:v2" },
+      });
+      if (sttError) throw sttError;
+
+      const userText = sttData?.text?.trim();
+      if (!userText) {
+        toast(chatLang === "hi" ? "सुन नहीं पाया, फिर से बोलिए।" : "I couldn't hear that. Please try again.");
+        if (!isEndingRef.current) startListening();
+        return;
+      }
+
+      setTranscript(userText);
+      conversationRef.current.push({ role: "user", content: userText });
+
+      const { data: chatData, error: chatError } = await supabase.functions.invoke("gita-chat", {
+        body: { messages: conversationRef.current, language: chatLang, stream: false },
+      });
+      if (chatError) throw chatError;
+
+      const fullText = chatData?.text?.trim?.() ?? "";
+      if (isEndingRef.current) return;
+      if (!fullText) throw new Error("Empty AI response");
+
+      conversationRef.current.push({ role: "assistant", content: fullText });
+      setResponse(fullText);
+      setStatus("speaking");
+      await speakText(fullText);
+
+      if (!isEndingRef.current) startListening();
+    } catch (e) {
+      console.error("Call error:", e);
+      toast.error(chatLang === "hi" ? "कुछ गलती हुई, दोबारा कोशिश करें।" : "Something went wrong. Please try again.");
+      if (!isEndingRef.current) startListening();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatLang, voiceLang, speakText]);
+
+  // ─── startListening with silence detection ───
   const startListening = useCallback(async () => {
     if (isEndingRef.current) return;
 
@@ -135,7 +154,6 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-      // iOS Safari compatibility — pick best supported mime
       const mimeType = MediaRecorder.isTypeSupported("audio/webm")
         ? "audio/webm"
         : MediaRecorder.isTypeSupported("audio/mp4")
@@ -154,6 +172,7 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
 
+      // onstop MUST be defined BEFORE recorder.start()
       recorder.onstop = async () => {
         clearTimeout(activeRecordTimeoutRef.current);
         if (analyserCleanupRef.current) {
@@ -203,7 +222,6 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
           requestAnimationFrame(checkSilence);
         };
 
-        // Start checking only after 1.5s to avoid cutting off at start
         setTimeout(() => requestAnimationFrame(checkSilence), 1500);
 
         analyserCleanupRef.current = () => {
@@ -214,21 +232,17 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
         // AudioContext not available — rely on hard timeout
       }
 
-      // Max-duration safety fallback of 45 seconds
+      // Max-duration safety fallback
       activeRecordTimeoutRef.current = setTimeout(() => {
         if (recorder.state === "recording") {
           recorder.stop();
-          if (analyserCleanupRef.current) {
-            analyserCleanupRef.current();
-            analyserCleanupRef.current = null;
-          }
         }
       }, 45000);
     } catch (err) {
       console.error("Mic error:", err);
       toast.error(chatLang === "hi" ? "माइक्रोफोन में समस्या है।" : "Microphone error.");
     }
-  }, [chatLang]);
+  }, [chatLang, processAudio]);
 
   const startCall = useCallback(async () => {
     try {
@@ -258,7 +272,15 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
 
   const endCall = useCallback(() => {
     isEndingRef.current = true;
-    stopAudio();
+
+    // Stop Sarvam audio
+    audioRef.current?.pause();
+    audioRef.current = null;
+
+    // Stop browser TTS
+    window.speechSynthesis?.cancel();
+    synthRef.current = null;
+
     clearTimeout(activeRecordTimeoutRef.current);
     if (analyserCleanupRef.current) {
       analyserCleanupRef.current();
@@ -272,71 +294,21 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
     setTranscript("");
     setResponse("");
     clearInterval(timerRef.current);
-  }, [stopAudio]);
+  }, []);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      stopAudio();
+      audioRef.current?.pause();
+      audioRef.current = null;
+      window.speechSynthesis?.cancel();
       clearTimeout(activeRecordTimeoutRef.current);
       if (analyserCleanupRef.current) {
         analyserCleanupRef.current();
         analyserCleanupRef.current = null;
       }
     };
-  }, [stopAudio]);
-
-  const processAudio = async (blob: Blob) => {
-    if (isEndingRef.current) return;
-    setStatus("thinking");
-
-    try {
-      const reader = new FileReader();
-      const base64 = await new Promise<string>((resolve) => {
-        reader.onloadend = () => resolve((reader.result as string).split(",")[1]);
-        reader.readAsDataURL(blob);
-      });
-
-      const { data: sttData, error: sttError } = await supabase.functions.invoke("sarvam-stt", {
-        body: { audio: base64, language_code: voiceLang, model: "saarika:v2" },
-      });
-      if (sttError) throw sttError;
-
-      const userText = sttData?.text?.trim();
-      if (!userText) {
-        toast(chatLang === "hi" ? "सुन नहीं पाया, फिर से बोलिए।" : "I couldn't hear that. Please try again.");
-        if (!isEndingRef.current) startListening();
-        return;
-      }
-
-      setTranscript(userText);
-      conversationRef.current.push({ role: "user", content: userText });
-
-      const { data: chatData, error: chatError } = await supabase.functions.invoke("gita-chat", {
-        body: { messages: conversationRef.current, language: chatLang, stream: false },
-      });
-      if (chatError) throw chatError;
-
-      const fullText = chatData?.text?.trim?.() ?? "";
-
-      if (isEndingRef.current) return;
-
-      if (!fullText) {
-        throw new Error("Empty AI response");
-      }
-
-      conversationRef.current.push({ role: "assistant", content: fullText });
-      setResponse(fullText);
-      setStatus("speaking");
-      await speakText(fullText);
-
-      if (!isEndingRef.current) startListening();
-    } catch (e) {
-      console.error("Call error:", e);
-      toast.error(chatLang === "hi" ? "कुछ गलती हुई, दोबारा कोशिश करें।" : "Something went wrong. Please try again.");
-      if (!isEndingRef.current) startListening();
-    }
-  };
+  }, []);
 
   const bars = 12;
 
