@@ -71,6 +71,9 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
   const activeRecordTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
   // Keep-alive interval to prevent mobile browsers from pausing speechSynthesis
   const speechKeepAliveRef = useRef<ReturnType<typeof setInterval>>();
+  const noStartTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
+  const hardStopTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
+  const activeUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   // Track if we've "unlocked" speech on iOS via user gesture
   const speechUnlockedRef = useRef(false);
 
@@ -83,6 +86,14 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
 
   const formatTime = (s: number) =>
     `${Math.floor(s / 60).toString().padStart(2, "0")}:${(s % 60).toString().padStart(2, "0")}`;
+
+  const stopSpeechImmediately = useCallback(() => {
+    clearInterval(speechKeepAliveRef.current);
+    clearTimeout(noStartTimeoutRef.current);
+    clearTimeout(hardStopTimeoutRef.current);
+    activeUtteranceRef.current = null;
+    window.speechSynthesis?.cancel();
+  }, []);
 
   /**
    * Unlock speechSynthesis on iOS by speaking a silent utterance from user gesture.
@@ -110,7 +121,7 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
   }, []);
 
   const speakText = useCallback(async (text: string): Promise<void> => {
-    if (!window.speechSynthesis) return;
+    if (!window.speechSynthesis || isEndingRef.current) return;
 
     const speechText = stripMarkdownForSpeech(text);
     if (!speechText) return;
@@ -118,10 +129,9 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
     const synth = window.speechSynthesis;
 
     // Cancel any ongoing speech
-    synth.cancel();
+    stopSpeechImmediately();
 
     // On mobile Chrome, speechSynthesis can pause after some seconds
-    clearInterval(speechKeepAliveRef.current);
     speechKeepAliveRef.current = setInterval(() => {
       if (synth.speaking && !synth.paused) {
         synth.pause();
@@ -135,12 +145,17 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
 
     const trySpeak = (lang: string, voice?: SpeechSynthesisVoice): Promise<boolean> =>
       new Promise<boolean>((resolve) => {
+        if (isEndingRef.current) return resolve(false);
+
         let settled = false;
         let started = false;
 
         const finish = (ok: boolean) => {
           if (settled) return;
           settled = true;
+          clearTimeout(noStartTimeoutRef.current);
+          clearTimeout(hardStopTimeoutRef.current);
+          if (!ok) activeUtteranceRef.current = null;
           resolve(ok);
         };
 
@@ -150,13 +165,22 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
         utterance.volume = 1;
         utterance.pitch = 1;
         if (voice) utterance.voice = voice;
+        activeUtteranceRef.current = utterance;
 
         utterance.onstart = () => {
           started = true;
+          if (isEndingRef.current) {
+            stopSpeechImmediately();
+            finish(false);
+          }
         };
-        utterance.onend = () => finish(started);
+        utterance.onend = () => {
+          activeUtteranceRef.current = null;
+          finish(started && !isEndingRef.current);
+        };
         utterance.onerror = (e) => {
           console.warn("TTS error:", e);
+          activeUtteranceRef.current = null;
           finish(false);
         };
 
@@ -164,29 +188,36 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
         synth.speak(utterance);
 
         // If speech never starts, treat as failure and retry fallback
-        setTimeout(() => {
+        noStartTimeoutRef.current = setTimeout(() => {
           if (!started) finish(false);
         }, 2000);
 
         // Chrome sometimes misses end events; don't block the call loop forever
-        setTimeout(() => finish(started), Math.min(15000, Math.max(5000, speechText.length * 120)));
+        hardStopTimeoutRef.current = setTimeout(
+          () => finish(started && !isEndingRef.current),
+          Math.min(15000, Math.max(5000, speechText.length * 120)),
+        );
       });
 
     const primaryOk = await trySpeak(voiceLang, preferredVoice);
+    if (isEndingRef.current) return stopSpeechImmediately();
+
     if (!primaryOk) {
       synth.cancel();
       const secondaryOk = await trySpeak(voiceLang);
+      if (isEndingRef.current) return stopSpeechImmediately();
+
       if (!secondaryOk) {
         synth.cancel();
         const fallbackOk = await trySpeak("en-US", englishFallbackVoice);
-        if (!fallbackOk) {
+        if (!fallbackOk && !isEndingRef.current) {
           toast.error(chatLang === "hi" ? "फ़ोन में आवाज़ चालू नहीं हो पाई।" : "Phone speaker voice could not start.");
         }
       }
     }
 
     clearInterval(speechKeepAliveRef.current);
-  }, [chatLang, voiceLang]);
+  }, [chatLang, voiceLang, stopSpeechImmediately]);
 
   const startListening = useCallback(async () => {
     if (isEndingRef.current) return;
@@ -260,12 +291,8 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
 
   const endCall = useCallback(() => {
     isEndingRef.current = true;
-    // Force stop speech immediately — call cancel multiple times for mobile reliability
-    window.speechSynthesis?.cancel();
-    setTimeout(() => window.speechSynthesis?.cancel(), 100);
-    setTimeout(() => window.speechSynthesis?.cancel(), 300);
+    stopSpeechImmediately();
     clearTimeout(activeRecordTimeoutRef.current);
-    clearInterval(speechKeepAliveRef.current);
     if (mediaRecorderRef.current?.state === "recording") {
       mediaRecorderRef.current.stop();
     }
@@ -274,16 +301,15 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
     setTranscript("");
     setResponse("");
     clearInterval(timerRef.current);
-  }, []);
+  }, [stopSpeechImmediately]);
 
   // Cleanup on unmount — stop any lingering speech
   useEffect(() => {
     return () => {
-      window.speechSynthesis?.cancel();
-      clearInterval(speechKeepAliveRef.current);
+      stopSpeechImmediately();
       clearTimeout(activeRecordTimeoutRef.current);
     };
-  }, []);
+  }, [stopSpeechImmediately]);
 
   const processAudio = async (blob: Blob) => {
     if (isEndingRef.current) return;
