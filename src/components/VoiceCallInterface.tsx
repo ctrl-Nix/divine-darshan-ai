@@ -178,12 +178,15 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
       const secondaryOk = await trySpeak(voiceLang);
       if (!secondaryOk) {
         synth.cancel();
-        await trySpeak("en-US", englishFallbackVoice);
+        const fallbackOk = await trySpeak("en-US", englishFallbackVoice);
+        if (!fallbackOk) {
+          toast.error(chatLang === "hi" ? "फ़ोन में आवाज़ चालू नहीं हो पाई।" : "Phone speaker voice could not start.");
+        }
       }
     }
 
     clearInterval(speechKeepAliveRef.current);
-  }, [voiceLang]);
+  }, [chatLang, voiceLang]);
 
   const startListening = useCallback(async () => {
     if (isEndingRef.current) return;
