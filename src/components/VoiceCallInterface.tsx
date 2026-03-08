@@ -457,6 +457,11 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
     isEndingRef.current = true;
     stopSpeechImmediately();
     clearTimeout(activeRecordTimeoutRef.current);
+    clearTimeout(silenceTimerRef.current);
+    if (analyserCleanupRef.current) {
+      analyserCleanupRef.current();
+      analyserCleanupRef.current = null;
+    }
     if (mediaRecorderRef.current?.state === "recording") {
       mediaRecorderRef.current.stop();
     }
@@ -472,6 +477,11 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
     return () => {
       stopSpeechImmediately();
       clearTimeout(activeRecordTimeoutRef.current);
+      clearTimeout(silenceTimerRef.current);
+      if (analyserCleanupRef.current) {
+        analyserCleanupRef.current();
+        analyserCleanupRef.current = null;
+      }
     };
   }, [stopSpeechImmediately]);
 
