@@ -59,7 +59,7 @@ const VoiceButton = ({ onResult, languageCode = "hi-IN" }: VoiceButtonProps) => 
       const base64Audio = await base64Promise;
 
       const { data, error } = await supabase.functions.invoke("sarvam-stt", {
-        body: { audio: base64Audio },
+        body: { audio: base64Audio, language_code: languageCode },
       });
 
       if (error) throw error;
