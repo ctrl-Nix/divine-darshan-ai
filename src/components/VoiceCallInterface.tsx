@@ -91,41 +91,54 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
       }
     }, 10000);
 
-    // Speak entire text as ONE utterance to avoid iOS blocking subsequent chunks
     return new Promise<void>((resolve) => {
-      const utterance = new SpeechSynthesisUtterance(speechText);
-      utterance.lang = voiceLang;
-      utterance.rate = 0.9;
-      utterance.volume = 1.0;
-      utterance.pitch = 1;
+      let settled = false;
+      const done = () => {
+        if (settled) return;
+        settled = true;
+        clearInterval(speechKeepAliveRef.current);
+        resolve();
+      };
 
-      // Try to pick a matching voice
       const voices = window.speechSynthesis.getVoices();
       const base = voiceLang.split("-")[0].toLowerCase();
-      const match =
+      const selectedVoice =
         voices.find((v) => v.lang.toLowerCase() === voiceLang.toLowerCase()) ||
-        voices.find((v) => v.lang.toLowerCase().startsWith(base));
-      if (match) utterance.voice = match;
+        voices.find((v) => v.lang.toLowerCase().startsWith(base)) ||
+        voices[0];
 
-      utterance.onend = () => {
-        clearInterval(speechKeepAliveRef.current);
-        resolve();
+      const speak = (langFallback?: string) => {
+        const utterance = new SpeechSynthesisUtterance(speechText);
+        utterance.lang = langFallback || selectedVoice?.lang || voiceLang;
+        utterance.rate = 0.9;
+        utterance.volume = 1;
+        utterance.pitch = 1;
+        if (selectedVoice) utterance.voice = selectedVoice;
+
+        utterance.onend = done;
+        utterance.onerror = (e) => {
+          console.warn("TTS error:", e);
+          done();
+        };
+
+        window.speechSynthesis.resume();
+        window.speechSynthesis.speak(utterance);
       };
-      utterance.onerror = (e) => {
-        console.warn("TTS error:", e);
-        clearInterval(speechKeepAliveRef.current);
-        resolve();
-      };
 
-      window.speechSynthesis.speak(utterance);
+      speak();
 
-      // Fallback: if speech doesn't start within 3s, resolve anyway
+      setTimeout(() => {
+        if (!window.speechSynthesis.speaking && !settled) {
+          window.speechSynthesis.cancel();
+          speak("en-US");
+        }
+      }, 1200);
+
       setTimeout(() => {
         if (!window.speechSynthesis.speaking) {
-          clearInterval(speechKeepAliveRef.current);
-          resolve();
+          done();
         }
-      }, 3000);
+      }, 4000);
     });
   }, [voiceLang]);
 
