@@ -231,8 +231,6 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
       // Unlock speech on iOS — MUST happen in this click handler
       unlockSpeech();
 
-      const permissionStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      permissionStream.getTracks().forEach((t) => t.stop());
       setCallActive(true);
       setElapsed(0);
       isEndingRef.current = false;
