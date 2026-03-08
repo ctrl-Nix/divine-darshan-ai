@@ -16,6 +16,11 @@ const stripMarkdownForSpeech = (text: string) =>
     .replace(/\[.*?\]\(.*?\)/g, "")
     .replace(/🙏.*$/gm, "")
     .replace(/\n{2,}/g, "\n")
+    // Fix English TTS pronunciation
+    .replace(/\bGita\b/gi, "Geeta")
+    .replace(/\bRadhe\b/gi, "Radhey")
+    .replace(/\bShloka?\b/gi, "Shloak")
+    .replace(/\bBhagavad\b/gi, "Bhuguvud")
     .trim();
 
 const splitSpeechChunks = (text: string, maxLen = 180): string[] => {

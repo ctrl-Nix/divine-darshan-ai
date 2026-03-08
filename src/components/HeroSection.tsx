@@ -1,6 +1,6 @@
 import { motion } from "framer-motion";
 import { MessageCircle, Sparkles, BookOpen, Heart, Phone } from "lucide-react";
-import krishnaImg from "@/assets/krishna-vishwaroop.jpg";
+import krishnaImg from "@/assets/krishna-mahabharat.png";
 
 const floatingIcons = [
   { icon: "🪷", x: "10%", y: "20%", delay: 0, duration: 7 },
