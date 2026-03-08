@@ -14,10 +14,11 @@ const stripMarkdownForSpeech = (text: string) =>
     .replace(/\[.*?\]\(.*?\)/g, "")
     .replace(/🙏.*$/gm, "")
     .replace(/\n{2,}/g, "\n")
-    .replace(/\bGita\b/gi, "Geeta")
-    .replace(/\bRadhe\b/gi, "Radhey")
-    .replace(/\bShloka?\b/gi, "Shloak")
-    .replace(/\bBhagavad\b/gi, "Bhuguvud")
+    .replace(/\bGita\b/gi, "Gee-ta")
+    .replace(/\bRadhe\b/gi, "Raa-dhey")
+    .replace(/\bShloka?\b/gi, "Shlo-k")
+    .replace(/\bBhagavad\b/gi, "Bhagavad")
+    .replace(/\bKrishna\b/gi, "Krish-na")
     .trim();
 
 /** Pick best supported mime type for MediaRecorder */
@@ -69,11 +70,10 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
   const timerRef = useRef<ReturnType<typeof setInterval>>();
   const isEndingRef = useRef(false);
   const activeRecordTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
-  // Keep-alive interval to prevent mobile browsers from pausing speechSynthesis
-  const speechKeepAliveRef = useRef<ReturnType<typeof setInterval>>();
   const noStartTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
   const hardStopTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
   const activeUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const activeAudioRef = useRef<HTMLAudioElement | null>(null);
   // Track if we've "unlocked" speech on iOS via user gesture
   const speechUnlockedRef = useRef(false);
 
@@ -88,10 +88,18 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
     `${Math.floor(s / 60).toString().padStart(2, "0")}:${(s % 60).toString().padStart(2, "0")}`;
 
   const stopSpeechImmediately = useCallback(() => {
-    clearInterval(speechKeepAliveRef.current);
     clearTimeout(noStartTimeoutRef.current);
     clearTimeout(hardStopTimeoutRef.current);
     activeUtteranceRef.current = null;
+
+    if (activeAudioRef.current) {
+      activeAudioRef.current.pause();
+      activeAudioRef.current.currentTime = 0;
+      activeAudioRef.current.src = "";
+      activeAudioRef.current.load();
+      activeAudioRef.current = null;
+    }
+
     window.speechSynthesis?.cancel();
   }, []);
 
@@ -120,24 +128,71 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
     speechUnlockedRef.current = true;
   }, []);
 
+  const playServerTts = useCallback(async (rawText: string): Promise<boolean> => {
+    if (isEndingRef.current) return false;
+
+    const text = stripMarkdownForSpeech(rawText);
+    if (!text) return false;
+
+    const { data, error } = await supabase.functions.invoke("sarvam-tts", {
+      body: { text, language_code: voiceLang },
+    });
+
+    if (error) {
+      console.warn("sarvam-tts failed, falling back to browser TTS", error);
+      return false;
+    }
+
+    const payload = data as { audioContent?: string; mimeType?: string } | null;
+    const audioContent = payload?.audioContent;
+    if (!audioContent) return false;
+
+    const mimeType = payload?.mimeType || "audio/wav";
+
+    return await new Promise<boolean>((resolve) => {
+      let settled = false;
+      const finish = (ok: boolean) => {
+        if (settled) return;
+        settled = true;
+        resolve(ok);
+      };
+
+      const audio = new Audio(`data:${mimeType};base64,${audioContent}`);
+      audio.preload = "auto";
+      audio.volume = 1;
+      activeAudioRef.current = audio;
+
+      audio.onended = () => {
+        if (activeAudioRef.current === audio) activeAudioRef.current = null;
+        finish(!isEndingRef.current);
+      };
+
+      audio.onerror = () => {
+        if (activeAudioRef.current === audio) activeAudioRef.current = null;
+        finish(false);
+      };
+
+      audio.play().catch((err) => {
+        console.warn("audio play blocked/failed, falling back to browser TTS", err);
+        if (activeAudioRef.current === audio) activeAudioRef.current = null;
+        finish(false);
+      });
+    });
+  }, [voiceLang]);
+
   const speakText = useCallback(async (text: string): Promise<void> => {
+    if (isEndingRef.current) return;
+
+    const usedServerTts = await playServerTts(text);
+    if (usedServerTts || isEndingRef.current) return;
+
     if (!window.speechSynthesis || isEndingRef.current) return;
 
     const speechText = stripMarkdownForSpeech(text);
     if (!speechText) return;
 
     const synth = window.speechSynthesis;
-
-    // Cancel any ongoing speech
     stopSpeechImmediately();
-
-    // On mobile Chrome, speechSynthesis can pause after some seconds
-    speechKeepAliveRef.current = setInterval(() => {
-      if (synth.speaking && !synth.paused) {
-        synth.pause();
-        synth.resume();
-      }
-    }, 5000);
 
     const voices = await waitForVoices();
     const preferredVoice = pickPreferredVoice(voices, voiceLang);
@@ -161,7 +216,7 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
 
         const utterance = new SpeechSynthesisUtterance(speechText);
         utterance.lang = lang;
-        utterance.rate = 0.9;
+        utterance.rate = 0.92;
         utterance.volume = 1;
         utterance.pitch = 1;
         if (voice) utterance.voice = voice;
@@ -178,8 +233,7 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
           activeUtteranceRef.current = null;
           finish(started && !isEndingRef.current);
         };
-        utterance.onerror = (e) => {
-          console.warn("TTS error:", e);
+        utterance.onerror = () => {
           activeUtteranceRef.current = null;
           finish(false);
         };
@@ -187,15 +241,13 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
         synth.resume();
         synth.speak(utterance);
 
-        // If speech never starts, treat as failure and retry fallback
         noStartTimeoutRef.current = setTimeout(() => {
           if (!started) finish(false);
-        }, 2000);
+        }, 1800);
 
-        // Chrome sometimes misses end events; don't block the call loop forever
         hardStopTimeoutRef.current = setTimeout(
           () => finish(started && !isEndingRef.current),
-          Math.min(15000, Math.max(5000, speechText.length * 120)),
+          Math.min(14000, Math.max(4500, speechText.length * 110)),
         );
       });
 
@@ -215,9 +267,7 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
         }
       }
     }
-
-    clearInterval(speechKeepAliveRef.current);
-  }, [chatLang, voiceLang, stopSpeechImmediately]);
+  }, [chatLang, voiceLang, stopSpeechImmediately, playServerTts]);
 
   const startListening = useCallback(async () => {
     if (isEndingRef.current) return;
