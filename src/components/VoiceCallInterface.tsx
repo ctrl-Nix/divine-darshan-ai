@@ -27,11 +27,11 @@ const normalizeSpeechText = (text: string, voiceLang: VoiceLang) => {
   }
 
   return cleaned
-    .replace(/\bGita\b/gi, "Gee-ta")
-    .replace(/\bRadhe\b/gi, "Raa-dhey")
-    .replace(/\bShloka?\b/gi, "Shlo-k")
+    .replace(/\bGita\b/gi, "Gita")
+    .replace(/\bRadhe\b/gi, "Radhey")
+    .replace(/\bShloka?\b/gi, "Shloka")
     .replace(/\bBhagavad\b/gi, "Bhagavad")
-    .replace(/\bKrishna\b/gi, "Krish-na");
+    .replace(/\bKrishna\b/gi, "Krishna");
 };
 
 /** Pick best supported mime type for MediaRecorder */
