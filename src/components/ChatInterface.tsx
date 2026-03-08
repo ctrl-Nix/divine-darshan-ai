@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, ArrowLeft, Sparkles, Globe } from "lucide-react";
+import { Send, ArrowLeft, Sparkles, Globe, Languages } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { toast } from "sonner";
 import VoiceButton from "./VoiceButton";
@@ -15,10 +15,12 @@ const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/gita-chat`;
 
 async function streamChat({
   messages,
+  language,
   onDelta,
   onDone,
 }: {
   messages: { role: string; content: string }[];
+  language: "en" | "hi";
   onDelta: (text: string) => void;
   onDone: () => void;
 }) {
@@ -28,7 +30,7 @@ async function streamChat({
       "Content-Type": "application/json",
       Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
     },
-    body: JSON.stringify({ messages }),
+    body: JSON.stringify({ messages, language }),
   });
 
   if (!resp.ok) {
@@ -70,22 +72,23 @@ async function streamChat({
   onDone();
 }
 
-const SUGGESTIONS = [
+const SUGGESTIONS_EN = [
   "I'm feeling overwhelmed by stress",
   "What is the purpose of life?",
   "I'm feeling lost in my career",
   "How do I control my anger?",
 ];
 
+const SUGGESTIONS_HI = [
+  "मुझे बहुत तनाव हो रहा है",
+  "जीवन का उद्देश्य क्या है?",
+  "मुझे अपने करियर में दिशा नहीं मिल रही",
+  "मैं अपना गुस्सा कैसे काबू करूं?",
+];
+
 const ChatInterface = ({ onBack }: { onBack: () => void }) => {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "welcome",
-      role: "assistant",
-      content:
-        "🙏 **Jai Shri Krishna!** I am your Gita Guide — crafted by a devoted follower of Lord Krishna.\n\nWhatever troubles your heart — stress, fear, anger, confusion, or any question about life — **the Gita holds every answer.**\n\nType your question, speak it, or try the suggestions below! 🙏",
-    },
-  ]);
+  const [chatLang, setChatLang] = useState<"en" | "hi">("en");
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(true);
@@ -93,9 +96,31 @@ const ChatInterface = ({ onBack }: { onBack: () => void }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Set welcome message based on language
+  useEffect(() => {
+    const welcome: Message = chatLang === "hi"
+      ? {
+          id: "welcome",
+          role: "assistant",
+          content: "🙏 **जय श्री कृष्ण!** मैं आपका गीता मार्गदर्शक हूँ — भगवान श्री कृष्ण के एक समर्पित भक्त द्वारा बनाया गया।\n\nआपके मन में जो भी परेशानी हो — तनाव, भय, क्रोध, भ्रम, या जीवन का कोई भी प्रश्न — **गीता में हर उत्तर है।**\n\nअपना प्रश्न लिखें, बोलें, या नीचे दिए गए सुझाव आज़माएं! 🙏",
+        }
+      : {
+          id: "welcome",
+          role: "assistant",
+          content: "🙏 **Jai Shri Krishna!** I am your Gita Guide — crafted by a devoted follower of Lord Krishna.\n\nWhatever troubles your heart — stress, fear, anger, confusion, or any question about life — **the Gita holds every answer.**\n\nType your question, speak it, or try the suggestions below! 🙏",
+        };
+    setMessages([welcome]);
+    setShowSuggestions(true);
+  }, [chatLang]);
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // Sync voice lang with chat lang
+  useEffect(() => {
+    setVoiceLang(chatLang === "hi" ? "hi-IN" : "en-IN");
+  }, [chatLang]);
 
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim() || isLoading) return;
@@ -123,6 +148,7 @@ const ChatInterface = ({ onBack }: { onBack: () => void }) => {
     try {
       await streamChat({
         messages: newMessages.map((m) => ({ role: m.role, content: m.content })),
+        language: chatLang,
         onDelta: upsertAssistant,
         onDone: () => {
           setIsLoading(false);
@@ -133,18 +159,19 @@ const ChatInterface = ({ onBack }: { onBack: () => void }) => {
       });
     } catch (e: any) {
       console.error(e);
-      toast.error(e.message || "कुछ गलत हो गया, पुनः प्रयास करें");
+      toast.error(e.message || "Something went wrong, please try again");
       setIsLoading(false);
     }
-  }, [isLoading, messages]);
+  }, [isLoading, messages, chatLang]);
 
   const handleSend = useCallback(() => sendMessage(input), [input, sendMessage]);
 
   const handleVoiceResult = useCallback((text: string) => {
     setInput(text);
-    // Auto-send after voice input
     sendMessage(text);
   }, [sendMessage]);
+
+  const suggestions = chatLang === "hi" ? SUGGESTIONS_HI : SUGGESTIONS_EN;
 
   return (
     <motion.div
@@ -167,8 +194,22 @@ const ChatInterface = ({ onBack }: { onBack: () => void }) => {
         </motion.div>
         <div className="flex-1">
           <h2 className="font-display font-semibold text-foreground text-lg">Gita Guide</h2>
-          <p className="text-xs text-peacock font-body">Powered by Gita Wisdom • Always Available</p>
+          <p className="text-xs text-peacock font-body">
+            {chatLang === "hi" ? "गीता ज्ञान • सदैव उपलब्ध" : "Powered by Gita Wisdom • Always Available"}
+          </p>
         </div>
+
+        {/* Chat language toggle */}
+        <motion.button
+          whileTap={{ scale: 0.9 }}
+          onClick={() => setChatLang((l) => (l === "en" ? "hi" : "en"))}
+          className="px-3 py-1.5 rounded-lg bg-secondary text-xs font-body font-medium text-secondary-foreground hover:bg-secondary/80 transition-all flex items-center gap-1.5 border border-border"
+          title={`Responses in: ${chatLang === "hi" ? "Hindi" : "English"}`}
+        >
+          <Languages size={14} />
+          {chatLang === "hi" ? "हिंदी" : "English"}
+        </motion.button>
+
         <div className="flex items-center gap-1.5">
           <motion.div
             className="w-2 h-2 rounded-full bg-peacock"
@@ -228,7 +269,7 @@ const ChatInterface = ({ onBack }: { onBack: () => void }) => {
             transition={{ delay: 0.5 }}
             className="flex flex-wrap gap-2 justify-center pt-4"
           >
-            {SUGGESTIONS.map((s) => (
+            {suggestions.map((s) => (
               <motion.button
                 key={s}
                 whileHover={{ scale: 1.05 }}
@@ -263,23 +304,12 @@ const ChatInterface = ({ onBack }: { onBack: () => void }) => {
         <div className="flex items-center gap-3 max-w-3xl mx-auto">
           <VoiceButton onResult={handleVoiceResult} languageCode={voiceLang} />
 
-          {/* Language toggle */}
-          <motion.button
-            whileTap={{ scale: 0.9 }}
-            onClick={() => setVoiceLang((l) => (l === "hi-IN" ? "en-IN" : "hi-IN"))}
-            className="p-2 rounded-lg bg-secondary text-xs font-body font-medium text-secondary-foreground hover:bg-secondary/80 transition-all flex items-center gap-1 min-w-[52px] justify-center"
-            title={`Voice: ${voiceLang === "hi-IN" ? "Hindi" : "English"}`}
-          >
-            <Globe size={14} />
-            {voiceLang === "hi-IN" ? "हि" : "EN"}
-          </motion.button>
-
           <input
             ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleSend()}
-            placeholder="Ask anything... कुछ भी पूछें..."
+            placeholder={chatLang === "hi" ? "अपना प्रश्न यहाँ लिखें..." : "Ask anything..."}
             className="flex-1 bg-secondary border border-border rounded-xl px-5 py-3 font-body text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/50 transition-all"
           />
 
