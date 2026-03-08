@@ -244,7 +244,7 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
 
     if (!window.speechSynthesis || isEndingRef.current) return;
 
-    const speechText = stripMarkdownForSpeech(text);
+    const speechText = normalizeSpeechText(text, voiceLang);
     if (!speechText) return;
 
     const synth = window.speechSynthesis;
