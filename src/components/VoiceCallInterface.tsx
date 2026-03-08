@@ -253,51 +253,16 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
       setTranscript(userText);
       conversationRef.current.push({ role: "user", content: userText });
 
-      const resp = await fetch(CHAT_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-        },
-        body: JSON.stringify({ messages: conversationRef.current, language: chatLang }),
+      const { data: chatData, error: chatError } = await supabase.functions.invoke("gita-chat", {
+        body: { messages: conversationRef.current, language: chatLang, stream: false },
       });
+      if (chatError) throw chatError;
 
-      if (!resp.ok || !resp.body) throw new Error("AI request failed");
-
-      const responseReader = resp.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let fullText = "";
-
-      while (true) {
-        const { done, value } = await responseReader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-
-        let idx: number;
-        while ((idx = buffer.indexOf("\n")) !== -1) {
-          let line = buffer.slice(0, idx);
-          buffer = buffer.slice(idx + 1);
-          if (line.endsWith("\r")) line = line.slice(0, -1);
-          if (!line.startsWith("data: ")) continue;
-
-          const json = line.slice(6).trim();
-          if (json === "[DONE]") continue;
-
-          try {
-            const parsed = JSON.parse(json);
-            const content = parsed.choices?.[0]?.delta?.content as string | undefined;
-            if (content) fullText += content;
-          } catch {
-            // ignore partial chunks
-          }
-        }
-      }
+      const fullText = chatData?.text?.trim?.() ?? "";
 
       if (isEndingRef.current) return;
 
-      if (!fullText.trim()) {
+      if (!fullText) {
         throw new Error("Empty AI response");
       }
 
