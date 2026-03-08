@@ -29,6 +29,31 @@ const getRecorderMime = (): string => {
   return "";
 };
 
+const waitForVoices = async (): Promise<SpeechSynthesisVoice[]> => {
+  if (!window.speechSynthesis) return [];
+  for (let i = 0; i < 7; i++) {
+    const voices = window.speechSynthesis.getVoices();
+    if (voices.length) return voices;
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+  return window.speechSynthesis.getVoices();
+};
+
+const pickPreferredVoice = (voices: SpeechSynthesisVoice[], preferredLang: VoiceLang) => {
+  const exactLang = preferredLang.toLowerCase();
+  const baseLang = exactLang.split("-")[0];
+  const localVoices = voices.filter((v) => v.localService);
+
+  for (const pool of [localVoices, voices]) {
+    const exact = pool.find((v) => v.lang.toLowerCase() === exactLang);
+    if (exact) return exact;
+    const sameBase = pool.find((v) => v.lang.toLowerCase().startsWith(baseLang));
+    if (sameBase) return sameBase;
+  }
+
+  return voices[0];
+};
+
 const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
   const [status, setStatus] = useState<"idle" | "listening" | "thinking" | "speaking" | "choosing">("choosing");
   const [transcript, setTranscript] = useState("");
