@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Phone, PhoneOff, Loader2 } from "lucide-react";
+import { Phone, PhoneOff, Loader2, MicOff } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -13,12 +13,16 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
   const [callActive, setCallActive] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [voiceLang, setVoiceLang] = useState<"hi-IN" | "en-IN">("hi-IN");
+  const [chatLang, setChatLang] = useState<"en" | "hi">("hi");
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const conversationRef = useRef<{ role: string; content: string }[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval>>();
   const synthRef = useRef<SpeechSynthesisUtterance | null>(null);
   const isEndingRef = useRef(false);
+  const silenceTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const silenceCheckRef = useRef<ReturnType<typeof setInterval>>();
 
   useEffect(() => {
     if (callActive) {
@@ -38,20 +42,25 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
       isEndingRef.current = false;
       conversationRef.current = [];
 
-      // Speak greeting
+      const greeting = chatLang === "hi"
+        ? "जय श्री कृष्ण! मैं आपका गीता मार्गदर्शक हूँ। अपने मन की बात बताइए।"
+        : "Jai Shri Krishna! I am here to guide you. Please share what's on your mind.";
+
       setStatus("speaking");
-      setResponse("Jai Shri Krishna! I am here to guide you. Please share what's on your mind.");
-      await speakText("Jai Shri Krishna! I am here to guide you. Please share what's on your mind.");
+      setResponse(greeting);
+      await speakText(greeting);
       if (!isEndingRef.current) startListening();
     } catch {
       toast.error("Microphone access is required for voice calls.");
     }
-  }, []);
+  }, [chatLang]);
 
   const endCall = useCallback(() => {
     isEndingRef.current = true;
     window.speechSynthesis.cancel();
     mediaRecorderRef.current?.stop();
+    clearInterval(silenceCheckRef.current);
+    clearTimeout(silenceTimerRef.current);
     setCallActive(false);
     setStatus("idle");
     setTranscript("");
@@ -63,8 +72,8 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
     return new Promise((resolve) => {
       window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = "en-IN";
-      utterance.rate = 0.95;
+      utterance.lang = voiceLang;
+      utterance.rate = 0.9;
       utterance.pitch = 1.0;
       synthRef.current = utterance;
       utterance.onend = () => resolve();
@@ -83,12 +92,51 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
       mediaRecorderRef.current = recorder;
       chunksRef.current = [];
 
+      // Set up silence detection using Web Audio API
+      const audioCtx = new AudioContext();
+      const source = audioCtx.createMediaStreamSource(stream);
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 512;
+      source.connect(analyser);
+      analyserRef.current = analyser;
+
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+      let silentSince: number | null = null;
+      const SILENCE_THRESHOLD = 15; // amplitude threshold
+      const SILENCE_DURATION = 3000; // 3 seconds of silence before auto-stop
+      const MAX_RECORD_TIME = 60000; // max 60 seconds
+
+      // Check for silence periodically
+      silenceCheckRef.current = setInterval(() => {
+        analyser.getByteTimeDomainData(dataArray);
+        let maxAmplitude = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+          const val = Math.abs(dataArray[i] - 128);
+          if (val > maxAmplitude) maxAmplitude = val;
+        }
+
+        if (maxAmplitude < SILENCE_THRESHOLD) {
+          if (!silentSince) silentSince = Date.now();
+          else if (Date.now() - silentSince > SILENCE_DURATION) {
+            // User has been silent for 3 seconds — auto-stop
+            if (recorder.state === "recording") {
+              clearInterval(silenceCheckRef.current);
+              recorder.stop();
+            }
+          }
+        } else {
+          silentSince = null; // Reset on speech detected
+        }
+      }, 200);
+
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
 
       recorder.onstop = async () => {
+        clearInterval(silenceCheckRef.current);
         stream.getTracks().forEach((t) => t.stop());
+        audioCtx.close();
         if (isEndingRef.current) return;
         const blob = new Blob(chunksRef.current, { type: "audio/webm" });
         await processAudio(blob);
@@ -96,16 +144,20 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
 
       recorder.start();
 
-      // Auto-stop after 10 seconds of recording
+      // Hard max limit of 60 seconds
       setTimeout(() => {
-        if (recorder.state === "recording") recorder.stop();
-      }, 10000);
+        if (recorder.state === "recording") {
+          clearInterval(silenceCheckRef.current);
+          recorder.stop();
+        }
+      }, MAX_RECORD_TIME);
     } catch {
       toast.error("Microphone error");
     }
   }, []);
 
   const stopListening = useCallback(() => {
+    clearInterval(silenceCheckRef.current);
     if (mediaRecorderRef.current?.state === "recording") {
       mediaRecorderRef.current.stop();
     }
@@ -130,7 +182,7 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
 
       const userText = sttData?.text?.trim();
       if (!userText) {
-        toast("I couldn't hear that. Please try again.");
+        toast(chatLang === "hi" ? "सुन नहीं पाया, कृपया फिर से बोलें।" : "I couldn't hear that. Please try again.");
         if (!isEndingRef.current) startListening();
         return;
       }
@@ -138,19 +190,19 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
       setTranscript(userText);
       conversationRef.current.push({ role: "user", content: userText });
 
-      // Get AI response (non-streaming)
+      // Get AI response
       const resp = await fetch(CHAT_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
         },
-        body: JSON.stringify({ messages: conversationRef.current }),
+        body: JSON.stringify({ messages: conversationRef.current, language: chatLang }),
       });
 
       if (!resp.ok) throw new Error("AI request failed");
 
-      // Parse SSE stream to get full response
+      // Parse SSE stream
       const responseReader = resp.body!.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
@@ -225,9 +277,9 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
           className="text-sm font-body text-muted-foreground tracking-wider uppercase"
         >
           {!callActive
-            ? "Ready to call"
+            ? (chatLang === "hi" ? "कॉल शुरू करें" : "Ready to call")
             : status === "listening"
-            ? "🎙️ Listening..."
+            ? "🎙️ Listening... (speak freely, I'll wait)"
             : status === "thinking"
             ? "🙏 Finding wisdom..."
             : status === "speaking"
@@ -237,7 +289,6 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
 
         {/* Central orb */}
         <div className="relative">
-          {/* Pulsing rings */}
           {callActive && (
             <>
               {[1, 2, 3].map((i) => (
@@ -249,12 +300,7 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
                     scale: status === "speaking" ? [1, 1.1, 1] : status === "listening" ? [1, 1.05, 1] : 1,
                     opacity: [0.3, 0.1, 0.3],
                   }}
-                  transition={{
-                    duration: 2,
-                    repeat: Infinity,
-                    delay: i * 0.3,
-                    ease: "easeInOut",
-                  }}
+                  transition={{ duration: 2, repeat: Infinity, delay: i * 0.3, ease: "easeInOut" }}
                 />
               ))}
             </>
@@ -287,24 +333,12 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
               <motion.div
                 key={i}
                 className={`w-1 rounded-full ${
-                  status === "speaking"
-                    ? "bg-primary"
-                    : status === "listening"
-                    ? "bg-peacock"
-                    : "bg-muted-foreground/30"
+                  status === "speaking" ? "bg-primary" : status === "listening" ? "bg-peacock" : "bg-muted-foreground/30"
                 }`}
                 animate={{
-                  height:
-                    status === "speaking" || status === "listening"
-                      ? [8, Math.random() * 40 + 8, 8]
-                      : 8,
+                  height: status === "speaking" || status === "listening" ? [8, Math.random() * 40 + 8, 8] : 8,
                 }}
-                transition={{
-                  duration: 0.4 + Math.random() * 0.3,
-                  repeat: Infinity,
-                  delay: i * 0.05,
-                  ease: "easeInOut",
-                }}
+                transition={{ duration: 0.4 + Math.random() * 0.3, repeat: Infinity, delay: i * 0.05, ease: "easeInOut" }}
               />
             ))}
           </div>
@@ -313,6 +347,19 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
         {/* Timer */}
         {callActive && (
           <p className="font-body text-lg text-foreground/80 tabular-nums">{formatTime(elapsed)}</p>
+        )}
+
+        {/* Listening hint */}
+        {callActive && status === "listening" && (
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="text-xs text-muted-foreground font-body text-center"
+          >
+            {chatLang === "hi"
+              ? "आराम से बोलिए... चुप होने पर अपने आप सुन लूँगा"
+              : "Take your time... I'll auto-detect when you're done"}
+          </motion.p>
         )}
 
         {/* Transcript / Response */}
@@ -325,7 +372,7 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
               exit={{ opacity: 0 }}
               className="bg-card/60 border border-border rounded-2xl px-5 py-3 max-w-full w-full"
             >
-              <p className="text-xs text-muted-foreground mb-1 font-body">You said:</p>
+              <p className="text-xs text-muted-foreground mb-1 font-body">{chatLang === "hi" ? "आपने कहा:" : "You said:"}</p>
               <p className="text-sm font-body text-foreground">{transcript}</p>
             </motion.div>
           )}
@@ -338,25 +385,25 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
             animate={{ opacity: 1, y: 0 }}
             className="flex flex-col items-center gap-6 w-full"
           >
-            <p className="font-body text-foreground text-lg font-medium">Choose your language</p>
+            <p className="font-body text-foreground text-lg font-medium">Choose your language / भाषा चुनें</p>
             <div className="flex gap-4">
               {([
-                { code: "hi-IN" as const, label: "हिंदी", sub: "Hindi" },
-                { code: "en-IN" as const, label: "English", sub: "English" },
-              ]).map((lang) => (
+                { code: "hi-IN" as const, lang: "hi" as const, label: "हिंदी", sub: "Hindi" },
+                { code: "en-IN" as const, lang: "en" as const, label: "English", sub: "English" },
+              ]).map((l) => (
                 <motion.button
-                  key={lang.code}
+                  key={l.code}
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
-                  onClick={() => { setVoiceLang(lang.code); setStatus("idle"); }}
+                  onClick={() => { setVoiceLang(l.code); setChatLang(l.lang); setStatus("idle"); }}
                   className={`px-8 py-5 rounded-2xl border-2 font-body text-center transition-all ${
-                    voiceLang === lang.code
+                    voiceLang === l.code
                       ? "border-primary bg-primary/10 text-primary"
                       : "border-border bg-card text-foreground hover:border-primary/40"
                   }`}
                 >
-                  <p className="text-xl font-semibold">{lang.label}</p>
-                  <p className="text-xs text-muted-foreground mt-1">{lang.sub}</p>
+                  <p className="text-xl font-semibold">{l.label}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{l.sub}</p>
                 </motion.button>
               ))}
             </div>
@@ -365,38 +412,39 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
 
         {/* Call/End button */}
         {status !== "choosing" && (
-        <div className="flex items-center gap-6 mt-4">
-          {!callActive ? (
-            <motion.button
-              whileHover={{ scale: 1.1 }}
-              whileTap={{ scale: 0.9 }}
-              onClick={startCall}
-              className="w-20 h-20 rounded-full bg-green-600 hover:bg-green-500 text-white flex items-center justify-center shadow-lg transition-colors"
-            >
-              <Phone size={32} />
-            </motion.button>
-          ) : (
-            <>
-              {status === "listening" && (
-                <motion.button
-                  whileTap={{ scale: 0.9 }}
-                  onClick={stopListening}
-                  className="px-6 py-3 rounded-xl bg-primary/20 text-primary font-body text-sm border border-primary/30"
-                >
-                  Done speaking
-                </motion.button>
-              )}
+          <div className="flex items-center gap-6 mt-4">
+            {!callActive ? (
               <motion.button
                 whileHover={{ scale: 1.1 }}
                 whileTap={{ scale: 0.9 }}
-                onClick={() => { endCall(); onEnd(); }}
-                className="w-20 h-20 rounded-full bg-red-600 hover:bg-red-500 text-white flex items-center justify-center shadow-lg transition-colors"
+                onClick={startCall}
+                className="w-20 h-20 rounded-full bg-green-600 hover:bg-green-500 text-white flex items-center justify-center shadow-lg transition-colors"
               >
-                <PhoneOff size={32} />
+                <Phone size={32} />
               </motion.button>
-            </>
-          )}
-        </div>
+            ) : (
+              <>
+                {status === "listening" && (
+                  <motion.button
+                    whileTap={{ scale: 0.9 }}
+                    onClick={stopListening}
+                    className="px-6 py-3 rounded-xl bg-primary/20 text-primary font-body text-sm border border-primary/30 flex items-center gap-2"
+                  >
+                    <MicOff size={16} />
+                    {chatLang === "hi" ? "बोल चुका/चुकी" : "Done speaking"}
+                  </motion.button>
+                )}
+                <motion.button
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.9 }}
+                  onClick={() => { endCall(); onEnd(); }}
+                  className="w-20 h-20 rounded-full bg-red-600 hover:bg-red-500 text-white flex items-center justify-center shadow-lg transition-colors"
+                >
+                  <PhoneOff size={32} />
+                </motion.button>
+              </>
+            )}
+          </div>
         )}
 
         {!callActive && status !== "choosing" && (
