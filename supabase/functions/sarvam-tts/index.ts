@@ -39,6 +39,8 @@ serve(async (req) => {
         text: normalizedText,
         target_language_code: language_code,
         model: "bulbul:v3",
+        pace: 0.92,
+        speech_sample_rate: 24000,
         enable_preprocessing: true,
       }),
     });
@@ -52,22 +54,27 @@ serve(async (req) => {
       });
     }
 
-    let parsed: { audios?: string[] } | null = null;
+    let parsed: { audios?: string[]; audio?: string } | null = null;
     try {
       parsed = JSON.parse(bodyText);
     } catch {
       parsed = null;
     }
 
-    const audioContent = parsed?.audios?.[0];
-    if (!audioContent) {
+    const audioChunks = Array.isArray(parsed?.audios)
+      ? parsed.audios.filter((chunk): chunk is string => typeof chunk === "string" && chunk.length > 0)
+      : typeof parsed?.audio === "string" && parsed.audio.length > 0
+        ? [parsed.audio]
+        : [];
+
+    if (!audioChunks.length) {
       return new Response(JSON.stringify({ error: "No audio returned from TTS provider" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    return new Response(JSON.stringify({ audioContent, mimeType: "audio/wav" }), {
+    return new Response(JSON.stringify({ audios: audioChunks, mimeType: "audio/wav" }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
