@@ -16,69 +16,19 @@ const stripMarkdownForSpeech = (text: string) =>
     .replace(/\[.*?\]\(.*?\)/g, "")
     .replace(/🙏.*$/gm, "")
     .replace(/\n{2,}/g, "\n")
-    // Fix English TTS pronunciation
     .replace(/\bGita\b/gi, "Geeta")
     .replace(/\bRadhe\b/gi, "Radhey")
     .replace(/\bShloka?\b/gi, "Shloak")
     .replace(/\bBhagavad\b/gi, "Bhuguvud")
     .trim();
 
-const splitSpeechChunks = (text: string, maxLen = 180): string[] => {
-  const parts = text.match(/[^.!?।\n]+[.!?।\n]*/g)?.map((p) => p.trim()).filter(Boolean) ?? [text];
-  const chunks: string[] = [];
-  let current = "";
-
-  for (const part of parts) {
-    if ((`${current} ${part}`).trim().length <= maxLen) {
-      current = `${current} ${part}`.trim();
-      continue;
-    }
-    if (current) chunks.push(current);
-    if (part.length <= maxLen) {
-      current = part;
-    } else {
-      for (let i = 0; i < part.length; i += maxLen) {
-        chunks.push(part.slice(i, i + maxLen));
-      }
-      current = "";
-    }
+/** Pick best supported mime type for MediaRecorder */
+const getRecorderMime = (): string => {
+  const types = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg", ""];
+  for (const t of types) {
+    if (!t || MediaRecorder.isTypeSupported(t)) return t;
   }
-
-  if (current) chunks.push(current);
-  return chunks.length ? chunks : [text];
-};
-
-const loadVoices = async (): Promise<SpeechSynthesisVoice[]> => {
-  if (typeof window === "undefined" || !window.speechSynthesis) return [];
-
-  const existing = window.speechSynthesis.getVoices();
-  if (existing.length) return existing;
-
-  return new Promise((resolve) => {
-    const onVoicesChanged = () => {
-      const voices = window.speechSynthesis.getVoices();
-      if (voices.length) {
-        window.speechSynthesis.removeEventListener("voiceschanged", onVoicesChanged);
-        resolve(voices);
-      }
-    };
-
-    window.speechSynthesis.addEventListener("voiceschanged", onVoicesChanged);
-
-    setTimeout(() => {
-      window.speechSynthesis.removeEventListener("voiceschanged", onVoicesChanged);
-      resolve(window.speechSynthesis.getVoices());
-    }, 1800);
-  });
-};
-
-const pickVoice = (voices: SpeechSynthesisVoice[], lang: VoiceLang) => {
-  const base = lang.split("-")[0].toLowerCase();
-  return (
-    voices.find((v) => v.lang.toLowerCase() === lang.toLowerCase()) ||
-    voices.find((v) => v.lang.toLowerCase().startsWith(base)) ||
-    null
-  );
+  return "";
 };
 
 const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
@@ -96,6 +46,10 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
   const timerRef = useRef<ReturnType<typeof setInterval>>();
   const isEndingRef = useRef(false);
   const activeRecordTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
+  // Keep-alive interval to prevent mobile browsers from pausing speechSynthesis
+  const speechKeepAliveRef = useRef<ReturnType<typeof setInterval>>();
+  // Track if we've "unlocked" speech on iOS via user gesture
+  const speechUnlockedRef = useRef(false);
 
   useEffect(() => {
     if (callActive) {
@@ -107,29 +61,73 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
   const formatTime = (s: number) =>
     `${Math.floor(s / 60).toString().padStart(2, "0")}:${(s % 60).toString().padStart(2, "0")}`;
 
-  const speakText = useCallback(async (text: string) => {
+  /**
+   * Unlock speechSynthesis on iOS by speaking a silent utterance from user gesture.
+   * Must be called directly inside a click handler.
+   */
+  const unlockSpeech = useCallback(() => {
+    if (speechUnlockedRef.current) return;
+    if (!window.speechSynthesis) return;
+    const u = new SpeechSynthesisUtterance("");
+    u.volume = 0;
+    u.lang = "en-US";
+    window.speechSynthesis.speak(u);
+    speechUnlockedRef.current = true;
+  }, []);
+
+  const speakText = useCallback(async (text: string): Promise<void> => {
     if (!window.speechSynthesis) return;
 
     const speechText = stripMarkdownForSpeech(text);
     if (!speechText) return;
 
-    const voices = await loadVoices();
-    const selectedVoice = pickVoice(voices, voiceLang);
-    const chunks = splitSpeechChunks(speechText);
+    // Cancel any ongoing speech
+    window.speechSynthesis.cancel();
 
-    for (const chunk of chunks) {
-      if (isEndingRef.current) break;
-      await new Promise<void>((resolve) => {
-        const utterance = new SpeechSynthesisUtterance(chunk);
-        utterance.lang = voiceLang;
-        utterance.rate = 0.9;
-        utterance.pitch = 1;
-        if (selectedVoice) utterance.voice = selectedVoice;
-        utterance.onend = () => resolve();
-        utterance.onerror = () => resolve();
-        window.speechSynthesis.speak(utterance);
-      });
-    }
+    // On mobile Chrome, speechSynthesis pauses after ~15s. Keep-alive workaround:
+    clearInterval(speechKeepAliveRef.current);
+    speechKeepAliveRef.current = setInterval(() => {
+      if (window.speechSynthesis.speaking && !window.speechSynthesis.paused) {
+        window.speechSynthesis.pause();
+        window.speechSynthesis.resume();
+      }
+    }, 10000);
+
+    // Speak entire text as ONE utterance to avoid iOS blocking subsequent chunks
+    return new Promise<void>((resolve) => {
+      const utterance = new SpeechSynthesisUtterance(speechText);
+      utterance.lang = voiceLang;
+      utterance.rate = 0.9;
+      utterance.pitch = 1;
+
+      // Try to pick a matching voice
+      const voices = window.speechSynthesis.getVoices();
+      const base = voiceLang.split("-")[0].toLowerCase();
+      const match =
+        voices.find((v) => v.lang.toLowerCase() === voiceLang.toLowerCase()) ||
+        voices.find((v) => v.lang.toLowerCase().startsWith(base));
+      if (match) utterance.voice = match;
+
+      utterance.onend = () => {
+        clearInterval(speechKeepAliveRef.current);
+        resolve();
+      };
+      utterance.onerror = (e) => {
+        console.warn("TTS error:", e);
+        clearInterval(speechKeepAliveRef.current);
+        resolve();
+      };
+
+      window.speechSynthesis.speak(utterance);
+
+      // Fallback: if speech doesn't start within 3s, resolve anyway
+      setTimeout(() => {
+        if (!window.speechSynthesis.speaking) {
+          clearInterval(speechKeepAliveRef.current);
+          resolve();
+        }
+      }, 3000);
+    });
   }, [voiceLang]);
 
   const startListening = useCallback(async () => {
@@ -140,7 +138,10 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+      const mimeType = getRecorderMime();
+      const recorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
       mediaRecorderRef.current = recorder;
       chunksRef.current = [];
 
@@ -152,41 +153,47 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
         clearTimeout(activeRecordTimeoutRef.current);
         stream.getTracks().forEach((t) => t.stop());
         if (isEndingRef.current) return;
-        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+        const blob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" });
         await processAudio(blob);
       };
 
       recorder.start();
 
-      // Safety cap only; no short involuntary cut-off
       activeRecordTimeoutRef.current = setTimeout(() => {
         if (recorder.state === "recording") recorder.stop();
       }, 120000);
-    } catch {
+    } catch (err) {
+      console.error("Mic error:", err);
       toast.error(chatLang === "hi" ? "माइक्रोफोन में समस्या है।" : "Microphone error.");
     }
   }, [chatLang]);
 
   const startCall = useCallback(async () => {
     try {
+      // Unlock speech on iOS — MUST happen in this click handler
+      unlockSpeech();
+
       await navigator.mediaDevices.getUserMedia({ audio: true });
       setCallActive(true);
       setElapsed(0);
       isEndingRef.current = false;
       conversationRef.current = [];
 
+      // Pre-load voices
+      window.speechSynthesis?.getVoices();
+
       const greeting = chatLang === "hi"
-        ? "जय श्री कृष्ण। आराम से बोलिए, मैं ध्यान से सुन रहा हूँ। जब पूरा हो जाए तो 'बोल चुका/चुकी' दबाएँ।"
-        : "Jai Shri Krishna. Speak comfortably, I'm listening carefully. Press Done Speaking when you finish.";
+        ? "जय श्री कृष्ण। आराम से बोलिए, मैं ध्यान से सुन रहा हूँ। जब पूरा हो जाए तो 'बोल चुका' दबाएँ।"
+        : "Jai Shri Krishna. Speak comfortably, I am listening carefully. Press Done Speaking when you finish.";
 
       setStatus("speaking");
       setResponse(greeting);
       await speakText(greeting);
       if (!isEndingRef.current) startListening();
     } catch {
-      toast.error(chatLang === "hi" ? "कॉल के लिए माइक्रोफोन अनुमति दें।" : "Microphone access is required for voice calls.");
+      toast.error(chatLang === "hi" ? "कॉल के लिए माइक्रोफोन अनुमति दें।" : "Microphone access is required.");
     }
-  }, [chatLang, speakText, startListening]);
+  }, [chatLang, speakText, startListening, unlockSpeech]);
 
   const stopListening = useCallback(() => {
     if (mediaRecorderRef.current?.state === "recording") {
@@ -196,8 +203,9 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
 
   const endCall = useCallback(() => {
     isEndingRef.current = true;
-    window.speechSynthesis.cancel();
+    window.speechSynthesis?.cancel();
     clearTimeout(activeRecordTimeoutRef.current);
+    clearInterval(speechKeepAliveRef.current);
     mediaRecorderRef.current?.stop();
     setCallActive(false);
     setStatus("idle");
@@ -269,7 +277,7 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
             const content = parsed.choices?.[0]?.delta?.content as string | undefined;
             if (content) fullText += content;
           } catch {
-            // ignore malformed partial chunks
+            // ignore partial chunks
           }
         }
       }
@@ -315,11 +323,11 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
           className="text-sm font-body text-muted-foreground tracking-wider uppercase text-center"
         >
           {!callActive
-            ? (chatLang === "hi" ? "कॉल के लिए तैयार" : "Ready to call")
+            ? (chatLang === "hi" ? "कॉल शुरू करें" : "Ready to call")
             : status === "listening"
               ? (chatLang === "hi" ? "🎙️ सुन रहा हूँ... आराम से बोलिए" : "🎙️ Listening... take your time")
               : status === "thinking"
-                ? (chatLang === "hi" ? "🙏 गीता से उत्तर ढूंढ रहा हूँ..." : "🙏 Finding wisdom from Gita...")
+                ? (chatLang === "hi" ? "🙏 गीता से उत्तर ढूंढ रहा हूँ..." : "🙏 Finding wisdom...")
                 : status === "speaking"
                   ? (chatLang === "hi" ? "🗣️ बोल रहा हूँ..." : "🗣️ Speaking...")
                   : ""}
@@ -340,7 +348,6 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
           ))}
 
           <motion.div
-            transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
             className="w-40 h-40 md:w-48 md:h-48 rounded-full bg-gradient-divine flex items-center justify-center shadow-divine"
           >
             <span className="text-6xl md:text-7xl">🙏</span>
@@ -403,6 +410,7 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                   onClick={() => {
+                    unlockSpeech(); // Unlock on language selection tap too
                     setVoiceLang(l.code);
                     setChatLang(l.lang);
                     setStatus("idle");
@@ -448,10 +456,7 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
                 <motion.button
                   whileHover={{ scale: 1.1 }}
                   whileTap={{ scale: 0.9 }}
-                  onClick={() => {
-                    endCall();
-                    onEnd();
-                  }}
+                  onClick={() => { endCall(); onEnd(); }}
                   className="w-20 h-20 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center shadow-lg transition-opacity hover:opacity-90"
                 >
                   <PhoneOff size={32} />
