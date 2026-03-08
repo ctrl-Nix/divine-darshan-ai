@@ -347,6 +347,11 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
 
       recorder.onstop = async () => {
         clearTimeout(activeRecordTimeoutRef.current);
+        clearTimeout(silenceTimerRef.current);
+        if (analyserCleanupRef.current) {
+          analyserCleanupRef.current();
+          analyserCleanupRef.current = null;
+        }
         stream.getTracks().forEach((t) => t.stop());
         if (isEndingRef.current) return;
         const blob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" });
@@ -355,9 +360,58 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
 
       recorder.start();
 
+      // --- Silence detection using AudioContext analyser ---
+      try {
+        const audioCtx = new AudioContext();
+        const source = audioCtx.createMediaStreamSource(stream);
+        const analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 512;
+        source.connect(analyser);
+        const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+        let hasSpoken = false;
+        const SILENCE_THRESHOLD = 15; // RMS below this = silence
+        const SILENCE_DELAY = 2000;   // 2s of silence before auto-stop
+
+        const checkSilence = () => {
+          if (recorder.state !== "recording" || isEndingRef.current) return;
+
+          analyser.getByteTimeDomainData(dataArray);
+          let sum = 0;
+          for (let i = 0; i < dataArray.length; i++) {
+            const v = dataArray[i] - 128;
+            sum += v * v;
+          }
+          const rms = Math.sqrt(sum / dataArray.length);
+
+          if (rms > SILENCE_THRESHOLD) {
+            hasSpoken = true;
+            clearTimeout(silenceTimerRef.current);
+            silenceTimerRef.current = undefined;
+          } else if (hasSpoken && !silenceTimerRef.current) {
+            silenceTimerRef.current = setTimeout(() => {
+              if (recorder.state === "recording" && !isEndingRef.current) {
+                recorder.stop();
+              }
+            }, SILENCE_DELAY);
+          }
+
+          requestAnimationFrame(checkSilence);
+        };
+
+        requestAnimationFrame(checkSilence);
+
+        analyserCleanupRef.current = () => {
+          source.disconnect();
+          audioCtx.close().catch(() => {});
+        };
+      } catch {
+        // AudioContext not available — fall through to hard timeout
+      }
+
+      // Hard safety timeout at 28s (Sarvam STT limit is 30s)
       activeRecordTimeoutRef.current = setTimeout(() => {
         if (recorder.state === "recording") {
-          toast(chatLang === "hi" ? "30 सेकंड के अंदर बोलना पूरा करें।" : "Please complete speaking within 30 seconds.");
           recorder.stop();
         }
       }, 28000);
