@@ -88,8 +88,9 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
   const activeUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const activeAudioRef = useRef<HTMLAudioElement | null>(null);
   const activeAudioUrlRef = useRef<string | null>(null);
-  // Track if we've "unlocked" speech on iOS via user gesture
   const speechUnlockedRef = useRef(false);
+  const silenceTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const analyserCleanupRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     if (callActive) {
