@@ -1,6 +1,6 @@
 import { motion } from "framer-motion";
 import { MessageCircle, Sparkles, BookOpen, Heart, Phone } from "lucide-react";
-import krishnaImg from "@/assets/krishna-hero.jpg";
+import krishnaImg from "@/assets/krishna-eye-contact.png";
 
 const floatingIcons = [
   { icon: "🪷", x: "10%", y: "20%", delay: 0, duration: 7 },
@@ -16,8 +16,8 @@ const HeroSection = ({ onStartChat, onStartCall }: { onStartChat: () => void; on
       {/* Ambient glow effects */}
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute top-1/4 left-1/4 w-96 h-96 rounded-full bg-primary/8 blur-[120px] glow-pulse" />
-        <div className="absolute bottom-1/4 right-1/4 w-80 h-80 rounded-full bg-peacock/8 blur-[100px] glow-pulse" style={{ animationDelay: '1.5s' }} />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full bg-saffron/3 blur-[200px] glow-pulse" style={{ animationDelay: '3s' }} />
+        <div className="absolute bottom-1/4 right-1/4 w-80 h-80 rounded-full bg-peacock/8 blur-[100px] glow-pulse" style={{ animationDelay: "1.5s" }} />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full bg-saffron/3 blur-[200px] glow-pulse" style={{ animationDelay: "3s" }} />
       </div>
 
       {/* Floating icons */}
@@ -51,7 +51,6 @@ const HeroSection = ({ onStartChat, onStartCall }: { onStartChat: () => void; on
             transition={{ duration: 1.4, ease: [0.16, 1, 0.3, 1] }}
             className="relative float-gentle"
           >
-            {/* Outer rotating ring */}
             <motion.div
               className="absolute -inset-4 rounded-full border border-primary/20"
               animate={{ rotate: 360 }}
@@ -66,13 +65,13 @@ const HeroSection = ({ onStartChat, onStartCall }: { onStartChat: () => void; on
             <div className="w-48 h-48 md:w-64 md:h-64 lg:w-72 lg:h-72 rounded-full overflow-hidden shadow-glow border-2 border-primary/40 relative">
               <img
                 src={krishnaImg}
-                alt="Lord Krishna - Divine Guide"
+                alt="Lord Krishna looking directly at you with a compassionate expression"
                 className="w-full h-full object-cover"
+                loading="lazy"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-primary/20 to-transparent" />
             </div>
 
-            {/* Sparkle badge */}
             <motion.div
               className="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-card border border-primary/30 rounded-full px-4 py-1.5 flex items-center gap-1.5 shadow-divine"
               initial={{ opacity: 0, y: 10 }}
@@ -80,11 +79,10 @@ const HeroSection = ({ onStartChat, onStartCall }: { onStartChat: () => void; on
               transition={{ delay: 1.2 }}
             >
               <Sparkles size={14} className="text-primary" />
-              <span className="text-xs font-body text-primary font-medium">AI Powered</span>
+              <span className="text-xs font-body text-primary font-medium">Krishna's Messenger</span>
             </motion.div>
           </motion.div>
 
-          {/* Text Content */}
           <motion.div
             initial={{ opacity: 0, y: 40 }}
             animate={{ opacity: 1, y: 0 }}
@@ -110,18 +108,25 @@ const HeroSection = ({ onStartChat, onStartCall }: { onStartChat: () => void; on
               transition={{ delay: 0.8 }}
               className="text-foreground/80 font-body text-lg md:text-xl mb-3 leading-relaxed"
             >
-              Your divine guide to life's toughest questions.
+              Real chat guidance from Bhagavad Gita — in Hindi or English.
             </motion.p>
             <motion.p
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.9 }}
-              className="text-muted-foreground font-body text-base mb-10"
+              className="text-muted-foreground font-body text-base mb-4"
             >
-              गीता का ज्ञान, आपकी भाषा में। Talk, type, or speak — Krishna's wisdom is here for you. 🙏
+              I am not Lord Krishna — I am an AI messenger made by His devotee, sharing Gita teachings within my limits.
+            </motion.p>
+            <motion.p
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 1.0 }}
+              className="text-muted-foreground/90 font-body text-sm mb-10"
+            >
+              If you cannot read the Gita right now, ask here and receive direct verse-based guidance. Radhe Radhe 🙏
             </motion.p>
 
-            {/* CTA Buttons */}
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <motion.button
                 whileHover={{ scale: 1.05, boxShadow: "0 0 40px hsl(36 90% 55% / 0.4)" }}
@@ -134,10 +139,10 @@ const HeroSection = ({ onStartChat, onStartCall }: { onStartChat: () => void; on
               </motion.button>
 
               <motion.button
-                whileHover={{ scale: 1.05, boxShadow: "0 0 30px hsl(120 40% 40% / 0.3)" }}
+                whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 onClick={onStartCall}
-                className="group px-8 py-4 rounded-2xl border-2 border-green-500/40 bg-green-500/10 font-body font-semibold text-green-400 hover:bg-green-500/20 transition-all duration-300 flex items-center gap-3 justify-center"
+                className="group px-8 py-4 rounded-2xl border border-border bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-all duration-300 flex items-center gap-3 justify-center"
               >
                 <Phone size={20} className="group-hover:animate-pulse" />
                 🎙️ Call Gita Guide
@@ -145,7 +150,6 @@ const HeroSection = ({ onStartChat, onStartCall }: { onStartChat: () => void; on
             </div>
           </motion.div>
 
-          {/* Feature Cards */}
           <motion.div
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
@@ -154,8 +158,8 @@ const HeroSection = ({ onStartChat, onStartCall }: { onStartChat: () => void; on
           >
             {[
               { icon: BookOpen, title: "700+ Shlokas", desc: "All 18 chapters of wisdom" },
-              { icon: Heart, title: "Personal Guidance", desc: "Tailored to your problems" },
-              { icon: Sparkles, title: "Voice Enabled", desc: "Speak in Hindi, get answers" },
+              { icon: Heart, title: "Personal Guidance", desc: "Chat like a real friend" },
+              { icon: Sparkles, title: "Voice Enabled", desc: "Hindi + English voice mode" },
             ].map((feature, i) => (
               <motion.div
                 key={feature.title}
@@ -172,7 +176,6 @@ const HeroSection = ({ onStartChat, onStartCall }: { onStartChat: () => void; on
             ))}
           </motion.div>
 
-          {/* Stats row */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -197,3 +200,4 @@ const HeroSection = ({ onStartChat, onStartCall }: { onStartChat: () => void; on
 };
 
 export default HeroSection;
+
