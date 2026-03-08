@@ -204,15 +204,29 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
 
   const endCall = useCallback(() => {
     isEndingRef.current = true;
+    // Force stop speech immediately — call cancel multiple times for mobile reliability
     window.speechSynthesis?.cancel();
+    setTimeout(() => window.speechSynthesis?.cancel(), 100);
+    setTimeout(() => window.speechSynthesis?.cancel(), 300);
     clearTimeout(activeRecordTimeoutRef.current);
     clearInterval(speechKeepAliveRef.current);
-    mediaRecorderRef.current?.stop();
+    if (mediaRecorderRef.current?.state === "recording") {
+      mediaRecorderRef.current.stop();
+    }
     setCallActive(false);
     setStatus("idle");
     setTranscript("");
     setResponse("");
     clearInterval(timerRef.current);
+  }, []);
+
+  // Cleanup on unmount — stop any lingering speech
+  useEffect(() => {
+    return () => {
+      window.speechSynthesis?.cancel();
+      clearInterval(speechKeepAliveRef.current);
+      clearTimeout(activeRecordTimeoutRef.current);
+    };
   }, []);
 
   const processAudio = async (blob: Blob) => {
