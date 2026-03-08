@@ -19,7 +19,7 @@ serve(async (req) => {
       );
     }
 
-    const { audio } = await req.json();
+    const { audio, language_code } = await req.json();
     if (!audio) {
       return new Response(
         JSON.stringify({ error: "No audio provided" }),
@@ -33,8 +33,8 @@ serve(async (req) => {
 
     const formData = new FormData();
     formData.append("file", blob, "audio.webm");
-    formData.append("model", "saaras:v2");
-    formData.append("language_code", "hi-IN");
+    formData.append("model", "saaras:v3");
+    formData.append("language_code", language_code || "hi-IN");
     formData.append("with_timestamps", "false");
 
     const response = await fetch("https://api.sarvam.ai/speech-to-text", {

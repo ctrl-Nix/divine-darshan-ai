@@ -6,9 +6,10 @@ import { supabase } from "@/integrations/supabase/client";
 
 interface VoiceButtonProps {
   onResult: (text: string) => void;
+  languageCode?: string;
 }
 
-const VoiceButton = ({ onResult }: VoiceButtonProps) => {
+const VoiceButton = ({ onResult, languageCode = "hi-IN" }: VoiceButtonProps) => {
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -58,7 +59,7 @@ const VoiceButton = ({ onResult }: VoiceButtonProps) => {
       const base64Audio = await base64Promise;
 
       const { data, error } = await supabase.functions.invoke("sarvam-stt", {
-        body: { audio: base64Audio },
+        body: { audio: base64Audio, language_code: languageCode },
       });
 
       if (error) throw error;
