@@ -91,10 +91,21 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
   const unlockSpeech = useCallback(() => {
     if (speechUnlockedRef.current) return;
     if (!window.speechSynthesis) return;
-    const u = new SpeechSynthesisUtterance("");
-    u.volume = 0;
+
+    const synth = window.speechSynthesis;
+    synth.cancel();
+
+    // Non-empty warmup utterance works more reliably on Chrome mobile than empty string
+    const u = new SpeechSynthesisUtterance("ready");
+    u.volume = 0.01;
+    u.rate = 1.8;
+    u.pitch = 1;
     u.lang = "en-US";
-    window.speechSynthesis.speak(u);
+
+    synth.resume();
+    synth.speak(u);
+    setTimeout(() => synth.cancel(), 120);
+
     speechUnlockedRef.current = true;
   }, []);
 
