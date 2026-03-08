@@ -29,6 +29,10 @@ serve(async (req) => {
       });
     }
 
+    // Always use hi-IN for TTS — even English text with Sanskrit words
+    // sounds better with Hindi pronunciation rules
+    const ttsLang = language_code === "en-IN" ? "en-IN" : "hi-IN";
+
     const ttsResponse = await fetch("https://api.sarvam.ai/text-to-speech", {
       method: "POST",
       headers: {
@@ -37,9 +41,11 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         text: normalizedText,
-        target_language_code: language_code,
+        target_language_code: ttsLang,
         model: "bulbul:v3",
-        pace: 0.92,
+        speaker: "advait",
+        pace: 0.85,
+        temperature: 0.4,
         speech_sample_rate: 24000,
         enable_preprocessing: true,
       }),
