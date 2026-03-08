@@ -19,7 +19,7 @@ serve(async (req) => {
       );
     }
 
-    const { audio, language_code } = await req.json();
+    const { audio, language_code, model } = await req.json();
     if (!audio) {
       return new Response(
         JSON.stringify({ error: "No audio provided" }),
@@ -33,7 +33,7 @@ serve(async (req) => {
 
     const formData = new FormData();
     formData.append("file", blob, "audio.webm");
-    formData.append("model", "saaras:v3");
+    formData.append("model", model || "saarika:v2");
     formData.append("language_code", language_code || "hi-IN");
     formData.append("with_timestamps", "false");
 

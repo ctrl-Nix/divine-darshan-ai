@@ -8,65 +8,13 @@ import ReactMarkdown from "react-markdown";
 type CallLang = "en" | "hi";
 type VoiceLang = "en-IN" | "hi-IN";
 
-const cleanMarkdownForSpeech = (text: string) =>
+const cleanTextForSpeech = (text: string) =>
   text
     .replace(/[*#>_~`]/g, "")
     .replace(/\[.*?\]\(.*?\)/g, "")
     .replace(/🙏.*$/gm, "")
     .replace(/\n{2,}/g, "\n")
     .trim();
-
-const normalizeSpeechText = (text: string, voiceLang: VoiceLang) => {
-  const cleaned = cleanMarkdownForSpeech(text);
-
-  if (voiceLang === "hi-IN") {
-    return cleaned
-      .replace(/Bhagavad\s+Gita\s*,?\s*Chapter\s*(\d+)\s*,?\s*Verse\s*(\d+)/gi, "भगवद गीता अध्याय $1 श्लोक $2")
-      .replace(/\bRadhe\s+Radhe\b/gi, "राधे राधे")
-      .replace(/\bJai\s+Shri\s+Krishna\b/gi, "जय श्री कृष्ण");
-  }
-
-  return cleaned
-    .replace(/\bGita\b/gi, "Gita")
-    .replace(/\bRadhe\b/gi, "Radhey")
-    .replace(/\bShloka?\b/gi, "Shloka")
-    .replace(/\bBhagavad\b/gi, "Bhagavad")
-    .replace(/\bKrishna\b/gi, "Krishna");
-};
-
-/** Pick best supported mime type for MediaRecorder */
-const getRecorderMime = (): string => {
-  const types = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg", ""];
-  for (const t of types) {
-    if (!t || MediaRecorder.isTypeSupported(t)) return t;
-  }
-  return "";
-};
-
-const waitForVoices = async (): Promise<SpeechSynthesisVoice[]> => {
-  if (!window.speechSynthesis) return [];
-  for (let i = 0; i < 7; i++) {
-    const voices = window.speechSynthesis.getVoices();
-    if (voices.length) return voices;
-    await new Promise((resolve) => setTimeout(resolve, 200));
-  }
-  return window.speechSynthesis.getVoices();
-};
-
-const pickPreferredVoice = (voices: SpeechSynthesisVoice[], preferredLang: VoiceLang) => {
-  const exactLang = preferredLang.toLowerCase();
-  const baseLang = exactLang.split("-")[0];
-  const localVoices = voices.filter((v) => v.localService);
-
-  for (const pool of [localVoices, voices]) {
-    const exact = pool.find((v) => v.lang.toLowerCase() === exactLang);
-    if (exact) return exact;
-    const sameBase = pool.find((v) => v.lang.toLowerCase().startsWith(baseLang));
-    if (sameBase) return sameBase;
-  }
-
-  return voices[0];
-};
 
 const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
   const [status, setStatus] = useState<"idle" | "listening" | "thinking" | "speaking" | "choosing">("choosing");
@@ -83,13 +31,8 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
   const timerRef = useRef<ReturnType<typeof setInterval>>();
   const isEndingRef = useRef(false);
   const activeRecordTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
-  const noStartTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
-  const hardStopTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
-  const activeUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
-  const activeAudioRef = useRef<HTMLAudioElement | null>(null);
-  const activeAudioUrlRef = useRef<string | null>(null);
-  const speechUnlockedRef = useRef(false);
-  const silenceTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioUrlRef = useRef<string | null>(null);
   const analyserCleanupRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
@@ -102,230 +45,87 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
   const formatTime = (s: number) =>
     `${Math.floor(s / 60).toString().padStart(2, "0")}:${(s % 60).toString().padStart(2, "0")}`;
 
-  const stopSpeechImmediately = useCallback(() => {
-    clearTimeout(noStartTimeoutRef.current);
-    clearTimeout(hardStopTimeoutRef.current);
-    activeUtteranceRef.current = null;
-
-    if (activeAudioRef.current) {
-      activeAudioRef.current.onended = null;
-      activeAudioRef.current.onerror = null;
-      activeAudioRef.current.pause();
-      activeAudioRef.current.currentTime = 0;
-      activeAudioRef.current.src = "";
-      activeAudioRef.current.load();
-      activeAudioRef.current = null;
+  const stopAudio = useCallback(() => {
+    if (audioRef.current) {
+      audioRef.current.onended = null;
+      audioRef.current.onerror = null;
+      audioRef.current.pause();
+      audioRef.current = null;
     }
-
-    if (activeAudioUrlRef.current) {
-      URL.revokeObjectURL(activeAudioUrlRef.current);
-      activeAudioUrlRef.current = null;
+    if (audioUrlRef.current) {
+      URL.revokeObjectURL(audioUrlRef.current);
+      audioUrlRef.current = null;
     }
-
-    window.speechSynthesis?.cancel();
   }, []);
 
-  /**
-   * Unlock speechSynthesis on iOS by speaking a silent utterance from user gesture.
-   * Must be called directly inside a click handler.
-   */
-  const unlockSpeech = useCallback(() => {
-    if (speechUnlockedRef.current) return;
-    if (!window.speechSynthesis) return;
+  // ─── Sarvam TTS-only speakText (no browser speechSynthesis) ───
+  const speakText = useCallback(async (rawText: string): Promise<void> => {
+    if (isEndingRef.current) return;
 
-    const synth = window.speechSynthesis;
-    synth.cancel();
+    const text = cleanTextForSpeech(rawText);
+    if (!text) return;
 
-    // Non-empty warmup utterance works more reliably on Chrome mobile than empty string
-    const u = new SpeechSynthesisUtterance("ready");
-    u.volume = 0.01;
-    u.rate = 1.8;
-    u.pitch = 1;
-    u.lang = "en-US";
+    try {
+      const { data, error } = await supabase.functions.invoke("sarvam-tts", {
+        body: { text, language_code: voiceLang },
+      });
 
-    synth.resume();
-    synth.speak(u);
-    setTimeout(() => synth.cancel(), 120);
+      if (error) {
+        console.error("sarvam-tts error:", error);
+        toast.error(chatLang === "hi" ? "आवाज़ चालू नहीं हो पाई।" : "Voice playback failed.");
+        return;
+      }
 
-    speechUnlockedRef.current = true;
-  }, []);
+      const payload = data as { audio?: string } | null;
+      const base64Audio = payload?.audio;
+      if (!base64Audio) {
+        console.error("No audio in TTS response");
+        return;
+      }
 
-  const playServerTts = useCallback(async (rawText: string): Promise<boolean> => {
-    if (isEndingRef.current) return false;
+      if (isEndingRef.current) return;
 
-    const text = normalizeSpeechText(rawText, voiceLang);
-    if (!text) return false;
+      const binary = Uint8Array.from(atob(base64Audio), (c) => c.charCodeAt(0));
+      const blob = new Blob([binary], { type: "audio/wav" });
+      const objectUrl = URL.createObjectURL(blob);
 
-    const { data, error } = await supabase.functions.invoke("sarvam-tts", {
-      body: { text, language_code: voiceLang },
-    });
-
-    if (error) {
-      console.warn("sarvam-tts failed, falling back to browser TTS", error);
-      return false;
-    }
-
-    const payload = data as { audios?: string[]; audioContent?: string; mimeType?: string } | null;
-    const audioChunks = Array.isArray(payload?.audios)
-      ? payload.audios.filter((chunk): chunk is string => typeof chunk === "string" && chunk.length > 0)
-      : typeof payload?.audioContent === "string" && payload.audioContent.length > 0
-        ? [payload.audioContent]
-        : [];
-
-    if (!audioChunks.length) return false;
-
-    const mimeType = payload?.mimeType || "audio/wav";
-
-    const playChunk = (base64Audio: string): Promise<boolean> =>
-      new Promise<boolean>((resolve) => {
-        let settled = false;
-
-        const finish = (ok: boolean) => {
-          if (settled) return;
-          settled = true;
-          resolve(ok);
-        };
-
-        let objectUrl: string;
-        try {
-          const binary = Uint8Array.from(atob(base64Audio), (c) => c.charCodeAt(0));
-          const blob = new Blob([binary], { type: mimeType });
-          objectUrl = URL.createObjectURL(blob);
-        } catch {
-          finish(false);
+      await new Promise<void>((resolve) => {
+        if (isEndingRef.current) {
+          URL.revokeObjectURL(objectUrl);
+          resolve();
           return;
         }
-
-        const clearActiveAudio = (audio: HTMLAudioElement) => {
-          if (activeAudioRef.current === audio) activeAudioRef.current = null;
-          if (activeAudioUrlRef.current === objectUrl) {
-            URL.revokeObjectURL(objectUrl);
-            activeAudioUrlRef.current = null;
-          }
-        };
 
         const audio = new Audio(objectUrl);
         audio.preload = "auto";
         audio.volume = 1;
         audio.setAttribute("playsinline", "true");
-        activeAudioRef.current = audio;
-        activeAudioUrlRef.current = objectUrl;
+        audioRef.current = audio;
+        audioUrlRef.current = objectUrl;
 
         audio.onended = () => {
-          clearActiveAudio(audio);
-          finish(!isEndingRef.current);
+          stopAudio();
+          resolve();
         };
 
         audio.onerror = () => {
-          clearActiveAudio(audio);
-          finish(false);
+          console.error("Audio playback error");
+          stopAudio();
+          resolve();
         };
 
         audio.play().catch((err) => {
-          console.warn("audio play blocked/failed, falling back to browser TTS", err);
-          clearActiveAudio(audio);
-          finish(false);
+          console.warn("audio play blocked:", err);
+          stopAudio();
+          resolve();
         });
       });
-
-    for (const chunk of audioChunks) {
-      if (isEndingRef.current) return false;
-      const ok = await playChunk(chunk);
-      if (!ok) return false;
+    } catch (err) {
+      console.error("speakText error:", err);
     }
+  }, [voiceLang, chatLang, stopAudio]);
 
-    return !isEndingRef.current;
-  }, [voiceLang]);
-
-  const speakText = useCallback(async (text: string): Promise<void> => {
-    if (isEndingRef.current) return;
-
-    const usedServerTts = await playServerTts(text);
-    if (usedServerTts || isEndingRef.current) return;
-
-    if (!window.speechSynthesis || isEndingRef.current) return;
-
-    const speechText = normalizeSpeechText(text, voiceLang);
-    if (!speechText) return;
-
-    const synth = window.speechSynthesis;
-    stopSpeechImmediately();
-
-    const voices = await waitForVoices();
-    const preferredVoice = pickPreferredVoice(voices, voiceLang);
-    const englishFallbackVoice = pickPreferredVoice(voices, "en-IN");
-
-    const trySpeak = (lang: string, voice?: SpeechSynthesisVoice): Promise<boolean> =>
-      new Promise<boolean>((resolve) => {
-        if (isEndingRef.current) return resolve(false);
-
-        let settled = false;
-        let started = false;
-
-        const finish = (ok: boolean) => {
-          if (settled) return;
-          settled = true;
-          clearTimeout(noStartTimeoutRef.current);
-          clearTimeout(hardStopTimeoutRef.current);
-          if (!ok) activeUtteranceRef.current = null;
-          resolve(ok);
-        };
-
-        const utterance = new SpeechSynthesisUtterance(speechText);
-        utterance.lang = lang;
-        utterance.rate = 0.92;
-        utterance.volume = 1;
-        utterance.pitch = 1;
-        if (voice) utterance.voice = voice;
-        activeUtteranceRef.current = utterance;
-
-        utterance.onstart = () => {
-          started = true;
-          if (isEndingRef.current) {
-            stopSpeechImmediately();
-            finish(false);
-          }
-        };
-        utterance.onend = () => {
-          activeUtteranceRef.current = null;
-          finish(started && !isEndingRef.current);
-        };
-        utterance.onerror = () => {
-          activeUtteranceRef.current = null;
-          finish(false);
-        };
-
-        synth.resume();
-        synth.speak(utterance);
-
-        noStartTimeoutRef.current = setTimeout(() => {
-          if (!started) finish(false);
-        }, 1800);
-
-        hardStopTimeoutRef.current = setTimeout(
-          () => finish(started && !isEndingRef.current),
-          Math.min(14000, Math.max(4500, speechText.length * 110)),
-        );
-      });
-
-    const primaryOk = await trySpeak(voiceLang, preferredVoice);
-    if (isEndingRef.current) return stopSpeechImmediately();
-
-    if (!primaryOk) {
-      synth.cancel();
-      const secondaryOk = await trySpeak(voiceLang);
-      if (isEndingRef.current) return stopSpeechImmediately();
-
-      if (!secondaryOk) {
-        synth.cancel();
-        const fallbackOk = await trySpeak("en-US", englishFallbackVoice);
-        if (!fallbackOk && !isEndingRef.current) {
-          toast.error(chatLang === "hi" ? "फ़ोन में आवाज़ चालू नहीं हो पाई।" : "Phone speaker voice could not start.");
-        }
-      }
-    }
-  }, [chatLang, voiceLang, stopSpeechImmediately, playServerTts]);
-
+  // ─── Recording with smart silence detection ───
   const startListening = useCallback(async () => {
     if (isEndingRef.current) return;
 
@@ -334,12 +134,21 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mimeType = getRecorderMime();
+
+      // iOS Safari compatibility — pick best supported mime
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm")
+        ? "audio/webm"
+        : MediaRecorder.isTypeSupported("audio/mp4")
+          ? "audio/mp4"
+          : "";
+
       const recorder = mimeType
         ? new MediaRecorder(stream, { mimeType })
         : new MediaRecorder(stream);
       mediaRecorderRef.current = recorder;
       chunksRef.current = [];
+
+      const recorderMime = recorder.mimeType || "audio/webm";
 
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data);
@@ -347,74 +156,74 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
 
       recorder.onstop = async () => {
         clearTimeout(activeRecordTimeoutRef.current);
-        clearTimeout(silenceTimerRef.current);
         if (analyserCleanupRef.current) {
           analyserCleanupRef.current();
           analyserCleanupRef.current = null;
         }
         stream.getTracks().forEach((t) => t.stop());
         if (isEndingRef.current) return;
-        const blob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" });
+        const blob = new Blob(chunksRef.current, { type: recorderMime });
         await processAudio(blob);
       };
 
       recorder.start();
 
-      // --- Silence detection using AudioContext analyser ---
+      // ─── Silence detection using Web Audio API ───
       try {
-        const audioCtx = new AudioContext();
-        const source = audioCtx.createMediaStreamSource(stream);
-        const analyser = audioCtx.createAnalyser();
+        const audioContext = new AudioContext();
+        const source = audioContext.createMediaStreamSource(stream);
+        const analyser = audioContext.createAnalyser();
         analyser.fftSize = 512;
         source.connect(analyser);
         const dataArray = new Uint8Array(analyser.frequencyBinCount);
 
-        let hasSpoken = false;
-        const SILENCE_THRESHOLD = 15; // RMS below this = silence
-        const SILENCE_DELAY = 2000;   // 2s of silence before auto-stop
+        let silenceStart: number | null = null;
+        const SILENCE_THRESHOLD = 10;
+        const SILENCE_DURATION = 1800;
 
         const checkSilence = () => {
           if (recorder.state !== "recording" || isEndingRef.current) return;
 
           analyser.getByteTimeDomainData(dataArray);
-          let sum = 0;
-          for (let i = 0; i < dataArray.length; i++) {
-            const v = dataArray[i] - 128;
-            sum += v * v;
-          }
-          const rms = Math.sqrt(sum / dataArray.length);
+          const rms = Math.sqrt(
+            dataArray.reduce((sum, v) => sum + (v - 128) ** 2, 0) / dataArray.length
+          );
 
-          if (rms > SILENCE_THRESHOLD) {
-            hasSpoken = true;
-            clearTimeout(silenceTimerRef.current);
-            silenceTimerRef.current = undefined;
-          } else if (hasSpoken && !silenceTimerRef.current) {
-            silenceTimerRef.current = setTimeout(() => {
-              if (recorder.state === "recording" && !isEndingRef.current) {
-                recorder.stop();
-              }
-            }, SILENCE_DELAY);
+          if (rms < SILENCE_THRESHOLD) {
+            if (!silenceStart) silenceStart = Date.now();
+            else if (Date.now() - silenceStart > SILENCE_DURATION) {
+              recorder.stop();
+              audioContext.close();
+              return;
+            }
+          } else {
+            silenceStart = null;
           }
 
           requestAnimationFrame(checkSilence);
         };
 
-        requestAnimationFrame(checkSilence);
+        // Start checking only after 1.5s to avoid cutting off at start
+        setTimeout(() => requestAnimationFrame(checkSilence), 1500);
 
         analyserCleanupRef.current = () => {
           source.disconnect();
-          audioCtx.close().catch(() => {});
+          audioContext.close().catch(() => {});
         };
       } catch {
-        // AudioContext not available — fall through to hard timeout
+        // AudioContext not available — rely on hard timeout
       }
 
-      // Hard safety timeout at 28s (Sarvam STT limit is 30s)
+      // Max-duration safety fallback of 45 seconds
       activeRecordTimeoutRef.current = setTimeout(() => {
         if (recorder.state === "recording") {
           recorder.stop();
+          if (analyserCleanupRef.current) {
+            analyserCleanupRef.current();
+            analyserCleanupRef.current = null;
+          }
         }
-      }, 28000);
+      }, 45000);
     } catch (err) {
       console.error("Mic error:", err);
       toast.error(chatLang === "hi" ? "माइक्रोफोन में समस्या है।" : "Microphone error.");
@@ -423,20 +232,14 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
 
   const startCall = useCallback(async () => {
     try {
-      // Unlock speech on iOS — MUST happen in this click handler
-      unlockSpeech();
-
       setCallActive(true);
       setElapsed(0);
       isEndingRef.current = false;
       conversationRef.current = [];
 
-      // Pre-load voices
-      window.speechSynthesis?.getVoices();
-
-      const greeting = chatLang === "hi"
-        ? "जय श्री कृष्ण। आराम से बोलिए, मैं ध्यान से सुन रहा हूँ। जब पूरा हो जाए तो 'बोल चुका' दबाएँ।"
-        : "Jai Shri Krishna. Speak comfortably, I am listening carefully. Press Done Speaking when you finish.";
+      const greeting = voiceLang === "hi-IN"
+        ? "जय श्री कृष्ण! मैं यहाँ आपका मार्गदर्शन करने के लिए हूँ। बताइए, आपके मन में क्या है?"
+        : "Jai Shri Krishna! I am here to guide you. Please share what's on your mind.";
 
       setStatus("speaking");
       setResponse(greeting);
@@ -445,7 +248,7 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
     } catch {
       toast.error(chatLang === "hi" ? "कॉल के लिए माइक्रोफोन अनुमति दें।" : "Microphone access is required.");
     }
-  }, [chatLang, speakText, startListening, unlockSpeech]);
+  }, [chatLang, voiceLang, speakText, startListening]);
 
   const stopListening = useCallback(() => {
     if (mediaRecorderRef.current?.state === "recording") {
@@ -455,9 +258,8 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
 
   const endCall = useCallback(() => {
     isEndingRef.current = true;
-    stopSpeechImmediately();
+    stopAudio();
     clearTimeout(activeRecordTimeoutRef.current);
-    clearTimeout(silenceTimerRef.current);
     if (analyserCleanupRef.current) {
       analyserCleanupRef.current();
       analyserCleanupRef.current = null;
@@ -470,20 +272,19 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
     setTranscript("");
     setResponse("");
     clearInterval(timerRef.current);
-  }, [stopSpeechImmediately]);
+  }, [stopAudio]);
 
-  // Cleanup on unmount — stop any lingering speech
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
-      stopSpeechImmediately();
+      stopAudio();
       clearTimeout(activeRecordTimeoutRef.current);
-      clearTimeout(silenceTimerRef.current);
       if (analyserCleanupRef.current) {
         analyserCleanupRef.current();
         analyserCleanupRef.current = null;
       }
     };
-  }, [stopSpeechImmediately]);
+  }, [stopAudio]);
 
   const processAudio = async (blob: Blob) => {
     if (isEndingRef.current) return;
@@ -497,7 +298,7 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
       });
 
       const { data: sttData, error: sttError } = await supabase.functions.invoke("sarvam-stt", {
-        body: { audio: base64, language_code: voiceLang },
+        body: { audio: base64, language_code: voiceLang, model: "saarika:v2" },
       });
       if (sttError) throw sttError;
 
@@ -646,7 +447,6 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                   onClick={() => {
-                    unlockSpeech(); // Unlock on language selection tap too
                     setVoiceLang(l.code);
                     setChatLang(l.lang);
                     setStatus("idle");
