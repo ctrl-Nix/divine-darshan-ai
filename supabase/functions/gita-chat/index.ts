@@ -89,7 +89,7 @@ serve(async (req) => {
   }
 
   try {
-    const { messages = [], language = "en" } = await req.json();
+    const { messages = [], language = "en", stream = true } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
@@ -114,7 +114,7 @@ serve(async (req) => {
       body: JSON.stringify({
         model: "google/gemini-3-flash-preview",
         messages: [{ role: "system", content: systemPrompt }, ...messages],
-        stream: true,
+        stream,
       }),
     });
 
@@ -135,6 +135,14 @@ serve(async (req) => {
       console.error("AI gateway error:", response.status, body);
       return new Response(JSON.stringify({ error: "AI gateway error" }), {
         status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (!stream) {
+      const data = await response.json();
+      const text = data?.choices?.[0]?.message?.content?.trim?.() ?? "";
+      return new Response(JSON.stringify({ text }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }

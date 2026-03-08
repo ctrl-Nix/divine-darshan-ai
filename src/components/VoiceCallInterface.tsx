@@ -5,8 +5,6 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import ReactMarkdown from "react-markdown";
 
-const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/gita-chat`;
-
 type CallLang = "en" | "hi";
 type VoiceLang = "en-IN" | "hi-IN";
 
@@ -93,41 +91,54 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
       }
     }, 10000);
 
-    // Speak entire text as ONE utterance to avoid iOS blocking subsequent chunks
     return new Promise<void>((resolve) => {
-      const utterance = new SpeechSynthesisUtterance(speechText);
-      utterance.lang = voiceLang;
-      utterance.rate = 0.9;
-      utterance.volume = 1.0;
-      utterance.pitch = 1;
+      let settled = false;
+      const done = () => {
+        if (settled) return;
+        settled = true;
+        clearInterval(speechKeepAliveRef.current);
+        resolve();
+      };
 
-      // Try to pick a matching voice
       const voices = window.speechSynthesis.getVoices();
       const base = voiceLang.split("-")[0].toLowerCase();
-      const match =
+      const selectedVoice =
         voices.find((v) => v.lang.toLowerCase() === voiceLang.toLowerCase()) ||
-        voices.find((v) => v.lang.toLowerCase().startsWith(base));
-      if (match) utterance.voice = match;
+        voices.find((v) => v.lang.toLowerCase().startsWith(base)) ||
+        voices[0];
 
-      utterance.onend = () => {
-        clearInterval(speechKeepAliveRef.current);
-        resolve();
+      const speak = (langFallback?: string) => {
+        const utterance = new SpeechSynthesisUtterance(speechText);
+        utterance.lang = langFallback || selectedVoice?.lang || voiceLang;
+        utterance.rate = 0.9;
+        utterance.volume = 1;
+        utterance.pitch = 1;
+        if (selectedVoice) utterance.voice = selectedVoice;
+
+        utterance.onend = done;
+        utterance.onerror = (e) => {
+          console.warn("TTS error:", e);
+          done();
+        };
+
+        window.speechSynthesis.resume();
+        window.speechSynthesis.speak(utterance);
       };
-      utterance.onerror = (e) => {
-        console.warn("TTS error:", e);
-        clearInterval(speechKeepAliveRef.current);
-        resolve();
-      };
 
-      window.speechSynthesis.speak(utterance);
+      speak();
 
-      // Fallback: if speech doesn't start within 3s, resolve anyway
+      setTimeout(() => {
+        if (!window.speechSynthesis.speaking && !settled) {
+          window.speechSynthesis.cancel();
+          speak("en-US");
+        }
+      }, 1200);
+
       setTimeout(() => {
         if (!window.speechSynthesis.speaking) {
-          clearInterval(speechKeepAliveRef.current);
-          resolve();
+          done();
         }
-      }, 3000);
+      }, 4000);
     });
   }, [voiceLang]);
 
@@ -255,51 +266,16 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
       setTranscript(userText);
       conversationRef.current.push({ role: "user", content: userText });
 
-      const resp = await fetch(CHAT_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-        },
-        body: JSON.stringify({ messages: conversationRef.current, language: chatLang }),
+      const { data: chatData, error: chatError } = await supabase.functions.invoke("gita-chat", {
+        body: { messages: conversationRef.current, language: chatLang, stream: false },
       });
+      if (chatError) throw chatError;
 
-      if (!resp.ok || !resp.body) throw new Error("AI request failed");
-
-      const responseReader = resp.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let fullText = "";
-
-      while (true) {
-        const { done, value } = await responseReader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-
-        let idx: number;
-        while ((idx = buffer.indexOf("\n")) !== -1) {
-          let line = buffer.slice(0, idx);
-          buffer = buffer.slice(idx + 1);
-          if (line.endsWith("\r")) line = line.slice(0, -1);
-          if (!line.startsWith("data: ")) continue;
-
-          const json = line.slice(6).trim();
-          if (json === "[DONE]") continue;
-
-          try {
-            const parsed = JSON.parse(json);
-            const content = parsed.choices?.[0]?.delta?.content as string | undefined;
-            if (content) fullText += content;
-          } catch {
-            // ignore partial chunks
-          }
-        }
-      }
+      const fullText = chatData?.text?.trim?.() ?? "";
 
       if (isEndingRef.current) return;
 
-      if (!fullText.trim()) {
+      if (!fullText) {
         throw new Error("Empty AI response");
       }
 
