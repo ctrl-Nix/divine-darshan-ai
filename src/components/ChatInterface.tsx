@@ -71,10 +71,10 @@ async function streamChat({
 }
 
 const SUGGESTIONS = [
-  "मुझे stress बहुत हो रहा है",
-  "Life का purpose क्या है?",
-  "I'm feeling lost in career",
-  "Anger control कैसे करें?",
+  "I'm feeling overwhelmed by stress",
+  "What is the purpose of life?",
+  "I'm feeling lost in my career",
+  "How do I control my anger?",
 ];
 
 const ChatInterface = ({ onBack }: { onBack: () => void }) => {
@@ -83,7 +83,7 @@ const ChatInterface = ({ onBack }: { onBack: () => void }) => {
       id: "welcome",
       role: "assistant",
       content:
-        "🙏 **Jai Shri Krishna!** मैं आपका Gita guide हूँ — एक कृष्ण भक्त द्वारा बनाया गया।\n\nLife में कोई भी problem हो — stress, fear, anger, confusion — **गीता में हर answer है।**\n\nType करें, बोलें, या नीचे दिए suggestions try करें! 🙏",
+        "🙏 **Jai Shri Krishna!** I am your Gita Guide — crafted by a devoted follower of Lord Krishna.\n\nWhatever troubles your heart — stress, fear, anger, confusion, or any question about life — **the Gita holds every answer.**\n\nType your question, speak it, or try the suggestions below! 🙏",
     },
   ]);
   const [input, setInput] = useState("");
@@ -153,7 +153,7 @@ const ChatInterface = ({ onBack }: { onBack: () => void }) => {
       className="flex flex-col h-screen bg-background"
     >
       {/* Header */}
-      <div className="flex items-center gap-4 px-6 py-4 border-b border-border bg-card/50 backdrop-blur-lg">
+      <div className="flex items-center gap-4 px-6 py-4 border-b border-border bg-card/50 backdrop-blur-xl">
         <button onClick={onBack} className="text-muted-foreground hover:text-foreground transition-colors">
           <ArrowLeft size={20} />
         </button>
@@ -162,14 +162,18 @@ const ChatInterface = ({ onBack }: { onBack: () => void }) => {
           animate={{ rotate: [0, 5, -5, 0] }}
           transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
         >
-          <Sparkles size={18} className="text-primary-foreground" />
+          <span className="text-lg">🙏</span>
         </motion.div>
         <div className="flex-1">
           <h2 className="font-display font-semibold text-foreground text-lg">Gita Guide</h2>
           <p className="text-xs text-peacock font-body">Powered by Gita Wisdom • Always Available</p>
         </div>
         <div className="flex items-center gap-1.5">
-          <div className="w-2 h-2 rounded-full bg-peacock animate-pulse" />
+          <motion.div
+            className="w-2 h-2 rounded-full bg-peacock"
+            animate={{ scale: [1, 1.3, 1], opacity: [0.7, 1, 0.7] }}
+            transition={{ duration: 2, repeat: Infinity }}
+          />
           <span className="text-xs text-muted-foreground font-body">Online</span>
         </div>
       </div>

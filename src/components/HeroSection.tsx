@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { MessageCircle, Sparkles, BookOpen, Heart } from "lucide-react";
+import { MessageCircle, Sparkles, BookOpen, Heart, Phone } from "lucide-react";
 import krishnaImg from "@/assets/krishna-hero.jpg";
 
 const floatingIcons = [
@@ -10,7 +10,7 @@ const floatingIcons = [
   { icon: "✨", x: "50%", y: "10%", delay: 0.8, duration: 5 },
 ];
 
-const HeroSection = ({ onStartChat }: { onStartChat: () => void }) => {
+const HeroSection = ({ onStartChat, onStartCall }: { onStartChat: () => void; onStartCall: () => void }) => {
   return (
     <section className="relative min-h-screen flex items-center justify-center overflow-hidden bg-gradient-cosmic">
       {/* Ambient glow effects */}
@@ -134,12 +134,13 @@ const HeroSection = ({ onStartChat }: { onStartChat: () => void }) => {
               </motion.button>
 
               <motion.button
-                whileHover={{ scale: 1.05 }}
+                whileHover={{ scale: 1.05, boxShadow: "0 0 30px hsl(120 40% 40% / 0.3)" }}
                 whileTap={{ scale: 0.95 }}
-                onClick={onStartChat}
-                className="px-8 py-4 rounded-2xl border border-primary/30 font-body font-medium text-primary hover:bg-primary/10 transition-all duration-300 flex items-center gap-3 justify-center"
+                onClick={onStartCall}
+                className="group px-8 py-4 rounded-2xl border-2 border-green-500/40 bg-green-500/10 font-body font-semibold text-green-400 hover:bg-green-500/20 transition-all duration-300 flex items-center gap-3 justify-center"
               >
-                🎙️ Voice Chat (Hindi)
+                <Phone size={20} className="group-hover:animate-pulse" />
+                🎙️ Call Gita Guide
               </motion.button>
             </div>
           </motion.div>
