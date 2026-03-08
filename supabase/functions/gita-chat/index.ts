@@ -63,12 +63,12 @@ serve(async (req) => {
 
     if (!response.ok) {
       if (response.status === 429) {
-        return new Response(JSON.stringify({ error: "बहुत सारे अनुरोध आ रहे हैं, कृपया थोड़ा रुकें।" }), {
+        return new Response(JSON.stringify({ error: "Too many requests, please wait a moment." }), {
           status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
       if (response.status === 402) {
-        return new Response(JSON.stringify({ error: "क्रेडिट समाप्त हो गए हैं।" }), {
+        return new Response(JSON.stringify({ error: "Credits exhausted. Please try again later." }), {
           status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
