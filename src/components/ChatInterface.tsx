@@ -83,7 +83,7 @@ const ChatInterface = ({ onBack }: { onBack: () => void }) => {
       id: "welcome",
       role: "assistant",
       content:
-        "🙏 **Jai Shri Krishna!** मैं आपका Gita guide हूँ — एक कृष्ण भक्त द्वारा बनाया गया।\n\nLife में कोई भी problem हो — stress, fear, anger, confusion — **गीता में हर answer है।**\n\nType करें, बोलें, या नीचे दिए suggestions try करें! 🙏",
+        "🙏 **Jai Shri Krishna!** I am your Gita Guide — crafted by a devoted follower of Lord Krishna.\n\nWhatever troubles your heart — stress, fear, anger, confusion, or any question about life — **the Gita holds every answer.**\n\nType your question, speak it, or try the suggestions below! 🙏",
     },
   ]);
   const [input, setInput] = useState("");
