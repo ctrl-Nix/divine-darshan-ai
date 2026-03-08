@@ -2,3 +2,6 @@ project_id = "jnqhcfudresxkapkrogd"
 
 [functions.gita-chat]
 verify_jwt = false
+
+[functions.sarvam-stt]
+verify_jwt = false
