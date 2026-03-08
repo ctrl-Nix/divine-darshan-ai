@@ -1,1 +1,4 @@
 project_id = "jnqhcfudresxkapkrogd"
+
+[functions.gita-chat]
+verify_jwt = false
