@@ -1,12 +1,20 @@
-// Update this page (the content is just a fallback if you fail to update the page)
+import { useState } from "react";
+import { AnimatePresence } from "framer-motion";
+import HeroSection from "@/components/HeroSection";
+import ChatInterface from "@/components/ChatInterface";
 
 const Index = () => {
+  const [showChat, setShowChat] = useState(false);
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
-      <div className="text-center">
-        <h1 className="mb-4 text-4xl font-bold">Welcome to Your Blank App</h1>
-        <p className="text-xl text-muted-foreground">Start building your amazing project here!</p>
-      </div>
+    <div className="min-h-screen bg-background">
+      <AnimatePresence mode="wait">
+        {showChat ? (
+          <ChatInterface key="chat" onBack={() => setShowChat(false)} />
+        ) : (
+          <HeroSection key="hero" onStartChat={() => setShowChat(true)} />
+        )}
+      </AnimatePresence>
     </div>
   );
 };
