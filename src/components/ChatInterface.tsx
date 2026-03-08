@@ -71,10 +71,10 @@ async function streamChat({
 }
 
 const SUGGESTIONS = [
-  "मुझे stress बहुत हो रहा है",
-  "Life का purpose क्या है?",
-  "I'm feeling lost in career",
-  "Anger control कैसे करें?",
+  "I'm feeling overwhelmed by stress",
+  "What is the purpose of life?",
+  "I'm feeling lost in my career",
+  "How do I control my anger?",
 ];
 
 const ChatInterface = ({ onBack }: { onBack: () => void }) => {
