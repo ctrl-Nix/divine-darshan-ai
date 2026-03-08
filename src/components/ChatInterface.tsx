@@ -261,7 +261,18 @@ const ChatInterface = ({ onBack }: { onBack: () => void }) => {
       {/* Input */}
       <div className="px-4 md:px-6 py-4 border-t border-border bg-card/30 backdrop-blur-lg">
         <div className="flex items-center gap-3 max-w-3xl mx-auto">
-          <VoiceButton onResult={handleVoiceResult} />
+          <VoiceButton onResult={handleVoiceResult} languageCode={voiceLang} />
+
+          {/* Language toggle */}
+          <motion.button
+            whileTap={{ scale: 0.9 }}
+            onClick={() => setVoiceLang((l) => (l === "hi-IN" ? "en-IN" : "hi-IN"))}
+            className="p-2 rounded-lg bg-secondary text-xs font-body font-medium text-secondary-foreground hover:bg-secondary/80 transition-all flex items-center gap-1 min-w-[52px] justify-center"
+            title={`Voice: ${voiceLang === "hi-IN" ? "Hindi" : "English"}`}
+          >
+            <Globe size={14} />
+            {voiceLang === "hi-IN" ? "हि" : "EN"}
+          </motion.button>
 
           <input
             ref={inputRef}
