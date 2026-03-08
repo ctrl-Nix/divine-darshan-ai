@@ -5,8 +5,6 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import ReactMarkdown from "react-markdown";
 
-const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/gita-chat`;
-
 type CallLang = "en" | "hi";
 type VoiceLang = "en-IN" | "hi-IN";
 
