@@ -7,11 +7,12 @@ import { supabase } from "@/integrations/supabase/client";
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/gita-chat`;
 
 const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
-  const [status, setStatus] = useState<"idle" | "listening" | "thinking" | "speaking">("idle");
+  const [status, setStatus] = useState<"idle" | "listening" | "thinking" | "speaking" | "choosing">("choosing");
   const [transcript, setTranscript] = useState("");
   const [response, setResponse] = useState("");
   const [callActive, setCallActive] = useState(false);
   const [elapsed, setElapsed] = useState(0);
+  const [voiceLang, setVoiceLang] = useState<"hi-IN" | "en-IN">("hi-IN");
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const conversationRef = useRef<{ role: string; content: string }[]>([]);
