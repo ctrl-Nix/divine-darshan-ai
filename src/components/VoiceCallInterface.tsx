@@ -136,6 +136,7 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
     const trySpeak = (lang: string, voice?: SpeechSynthesisVoice): Promise<boolean> =>
       new Promise<boolean>((resolve) => {
         let settled = false;
+        let started = false;
 
         const finish = (ok: boolean) => {
           if (settled) return;
@@ -150,7 +151,10 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
         utterance.pitch = 1;
         if (voice) utterance.voice = voice;
 
-        utterance.onend = () => finish(true);
+        utterance.onstart = () => {
+          started = true;
+        };
+        utterance.onend = () => finish(started);
         utterance.onerror = (e) => {
           console.warn("TTS error:", e);
           finish(false);
@@ -159,12 +163,13 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
         synth.resume();
         synth.speak(utterance);
 
+        // If speech never starts, treat as failure and retry fallback
         setTimeout(() => {
-          if (!synth.speaking) finish(false);
-        }, 1600);
+          if (!started) finish(false);
+        }, 2000);
 
-        // Hard timeout for buggy Chrome voice-event edge cases
-        setTimeout(() => finish(true), Math.min(15000, Math.max(5000, speechText.length * 120)));
+        // Chrome sometimes misses end events; don't block the call loop forever
+        setTimeout(() => finish(started), Math.min(15000, Math.max(5000, speechText.length * 120)));
       });
 
     const primaryOk = await trySpeak(voiceLang, preferredVoice);
