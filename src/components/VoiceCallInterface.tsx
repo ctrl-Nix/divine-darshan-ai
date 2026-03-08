@@ -91,10 +91,21 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
   const unlockSpeech = useCallback(() => {
     if (speechUnlockedRef.current) return;
     if (!window.speechSynthesis) return;
-    const u = new SpeechSynthesisUtterance("");
-    u.volume = 0;
+
+    const synth = window.speechSynthesis;
+    synth.cancel();
+
+    // Non-empty warmup utterance works more reliably on Chrome mobile than empty string
+    const u = new SpeechSynthesisUtterance("ready");
+    u.volume = 0.01;
+    u.rate = 1.8;
+    u.pitch = 1;
     u.lang = "en-US";
-    window.speechSynthesis.speak(u);
+
+    synth.resume();
+    synth.speak(u);
+    setTimeout(() => synth.cancel(), 120);
+
     speechUnlockedRef.current = true;
   }, []);
 
@@ -125,6 +136,7 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
     const trySpeak = (lang: string, voice?: SpeechSynthesisVoice): Promise<boolean> =>
       new Promise<boolean>((resolve) => {
         let settled = false;
+        let started = false;
 
         const finish = (ok: boolean) => {
           if (settled) return;
@@ -139,7 +151,10 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
         utterance.pitch = 1;
         if (voice) utterance.voice = voice;
 
-        utterance.onend = () => finish(true);
+        utterance.onstart = () => {
+          started = true;
+        };
+        utterance.onend = () => finish(started);
         utterance.onerror = (e) => {
           console.warn("TTS error:", e);
           finish(false);
@@ -148,12 +163,13 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
         synth.resume();
         synth.speak(utterance);
 
+        // If speech never starts, treat as failure and retry fallback
         setTimeout(() => {
-          if (!synth.speaking) finish(false);
-        }, 1600);
+          if (!started) finish(false);
+        }, 2000);
 
-        // Hard timeout for buggy Chrome voice-event edge cases
-        setTimeout(() => finish(true), Math.min(15000, Math.max(5000, speechText.length * 120)));
+        // Chrome sometimes misses end events; don't block the call loop forever
+        setTimeout(() => finish(started), Math.min(15000, Math.max(5000, speechText.length * 120)));
       });
 
     const primaryOk = await trySpeak(voiceLang, preferredVoice);
@@ -162,12 +178,15 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
       const secondaryOk = await trySpeak(voiceLang);
       if (!secondaryOk) {
         synth.cancel();
-        await trySpeak("en-US", englishFallbackVoice);
+        const fallbackOk = await trySpeak("en-US", englishFallbackVoice);
+        if (!fallbackOk) {
+          toast.error(chatLang === "hi" ? "फ़ोन में आवाज़ चालू नहीं हो पाई।" : "Phone speaker voice could not start.");
+        }
       }
     }
 
     clearInterval(speechKeepAliveRef.current);
-  }, [voiceLang]);
+  }, [chatLang, voiceLang]);
 
   const startListening = useCallback(async () => {
     if (isEndingRef.current) return;
@@ -212,8 +231,6 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
       // Unlock speech on iOS — MUST happen in this click handler
       unlockSpeech();
 
-      const permissionStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      permissionStream.getTracks().forEach((t) => t.stop());
       setCallActive(true);
       setElapsed(0);
       isEndingRef.current = false;
