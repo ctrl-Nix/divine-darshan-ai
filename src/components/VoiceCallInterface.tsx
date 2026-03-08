@@ -70,11 +70,10 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
   const timerRef = useRef<ReturnType<typeof setInterval>>();
   const isEndingRef = useRef(false);
   const activeRecordTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
-  // Keep-alive interval to prevent mobile browsers from pausing speechSynthesis
-  const speechKeepAliveRef = useRef<ReturnType<typeof setInterval>>();
   const noStartTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
   const hardStopTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
   const activeUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const activeAudioRef = useRef<HTMLAudioElement | null>(null);
   // Track if we've "unlocked" speech on iOS via user gesture
   const speechUnlockedRef = useRef(false);
 
@@ -89,10 +88,18 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
     `${Math.floor(s / 60).toString().padStart(2, "0")}:${(s % 60).toString().padStart(2, "0")}`;
 
   const stopSpeechImmediately = useCallback(() => {
-    clearInterval(speechKeepAliveRef.current);
     clearTimeout(noStartTimeoutRef.current);
     clearTimeout(hardStopTimeoutRef.current);
     activeUtteranceRef.current = null;
+
+    if (activeAudioRef.current) {
+      activeAudioRef.current.pause();
+      activeAudioRef.current.currentTime = 0;
+      activeAudioRef.current.src = "";
+      activeAudioRef.current.load();
+      activeAudioRef.current = null;
+    }
+
     window.speechSynthesis?.cancel();
   }, []);
 
