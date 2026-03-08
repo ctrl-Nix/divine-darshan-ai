@@ -33,7 +33,7 @@ serve(async (req) => {
 
     const formData = new FormData();
     formData.append("file", blob, "audio.webm");
-    formData.append("model", model || "saarika:v2");
+    formData.append("model", "saarika:v2.5");
     formData.append("language_code", language_code || "hi-IN");
     formData.append("with_timestamps", "false");
 
