@@ -29,6 +29,31 @@ const getRecorderMime = (): string => {
   return "";
 };
 
+const waitForVoices = async (): Promise<SpeechSynthesisVoice[]> => {
+  if (!window.speechSynthesis) return [];
+  for (let i = 0; i < 7; i++) {
+    const voices = window.speechSynthesis.getVoices();
+    if (voices.length) return voices;
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+  return window.speechSynthesis.getVoices();
+};
+
+const pickPreferredVoice = (voices: SpeechSynthesisVoice[], preferredLang: VoiceLang) => {
+  const exactLang = preferredLang.toLowerCase();
+  const baseLang = exactLang.split("-")[0];
+  const localVoices = voices.filter((v) => v.localService);
+
+  for (const pool of [localVoices, voices]) {
+    const exact = pool.find((v) => v.lang.toLowerCase() === exactLang);
+    if (exact) return exact;
+    const sameBase = pool.find((v) => v.lang.toLowerCase().startsWith(baseLang));
+    if (sameBase) return sameBase;
+  }
+
+  return voices[0];
+};
+
 const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
   const [status, setStatus] = useState<"idle" | "listening" | "thinking" | "speaking" | "choosing">("choosing");
   const [transcript, setTranscript] = useState("");
@@ -79,67 +104,69 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
     const speechText = stripMarkdownForSpeech(text);
     if (!speechText) return;
 
-    // Cancel any ongoing speech
-    window.speechSynthesis.cancel();
+    const synth = window.speechSynthesis;
 
-    // On mobile Chrome, speechSynthesis pauses after ~15s. Keep-alive workaround:
+    // Cancel any ongoing speech
+    synth.cancel();
+
+    // On mobile Chrome, speechSynthesis can pause after some seconds
     clearInterval(speechKeepAliveRef.current);
     speechKeepAliveRef.current = setInterval(() => {
-      if (window.speechSynthesis.speaking && !window.speechSynthesis.paused) {
-        window.speechSynthesis.pause();
-        window.speechSynthesis.resume();
+      if (synth.speaking && !synth.paused) {
+        synth.pause();
+        synth.resume();
       }
-    }, 10000);
+    }, 5000);
 
-    return new Promise<void>((resolve) => {
-      let settled = false;
-      const done = () => {
-        if (settled) return;
-        settled = true;
-        clearInterval(speechKeepAliveRef.current);
-        resolve();
-      };
+    const voices = await waitForVoices();
+    const preferredVoice = pickPreferredVoice(voices, voiceLang);
+    const englishFallbackVoice = pickPreferredVoice(voices, "en-IN");
 
-      const voices = window.speechSynthesis.getVoices();
-      const base = voiceLang.split("-")[0].toLowerCase();
-      const selectedVoice =
-        voices.find((v) => v.lang.toLowerCase() === voiceLang.toLowerCase()) ||
-        voices.find((v) => v.lang.toLowerCase().startsWith(base)) ||
-        voices[0];
+    const trySpeak = (lang: string, voice?: SpeechSynthesisVoice): Promise<boolean> =>
+      new Promise<boolean>((resolve) => {
+        let settled = false;
 
-      const speak = (langFallback?: string) => {
+        const finish = (ok: boolean) => {
+          if (settled) return;
+          settled = true;
+          resolve(ok);
+        };
+
         const utterance = new SpeechSynthesisUtterance(speechText);
-        utterance.lang = langFallback || selectedVoice?.lang || voiceLang;
+        utterance.lang = lang;
         utterance.rate = 0.9;
         utterance.volume = 1;
         utterance.pitch = 1;
-        if (selectedVoice) utterance.voice = selectedVoice;
+        if (voice) utterance.voice = voice;
 
-        utterance.onend = done;
+        utterance.onend = () => finish(true);
         utterance.onerror = (e) => {
           console.warn("TTS error:", e);
-          done();
+          finish(false);
         };
 
-        window.speechSynthesis.resume();
-        window.speechSynthesis.speak(utterance);
-      };
+        synth.resume();
+        synth.speak(utterance);
 
-      speak();
+        setTimeout(() => {
+          if (!synth.speaking) finish(false);
+        }, 1600);
 
-      setTimeout(() => {
-        if (!window.speechSynthesis.speaking && !settled) {
-          window.speechSynthesis.cancel();
-          speak("en-US");
-        }
-      }, 1200);
+        // Hard timeout for buggy Chrome voice-event edge cases
+        setTimeout(() => finish(true), Math.min(15000, Math.max(5000, speechText.length * 120)));
+      });
 
-      setTimeout(() => {
-        if (!window.speechSynthesis.speaking) {
-          done();
-        }
-      }, 4000);
-    });
+    const primaryOk = await trySpeak(voiceLang, preferredVoice);
+    if (!primaryOk) {
+      synth.cancel();
+      const secondaryOk = await trySpeak(voiceLang);
+      if (!secondaryOk) {
+        synth.cancel();
+        await trySpeak("en-US", englishFallbackVoice);
+      }
+    }
+
+    clearInterval(speechKeepAliveRef.current);
   }, [voiceLang]);
 
   const startListening = useCallback(async () => {
@@ -185,7 +212,8 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
       // Unlock speech on iOS — MUST happen in this click handler
       unlockSpeech();
 
-      await navigator.mediaDevices.getUserMedia({ audio: true });
+      const permissionStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      permissionStream.getTracks().forEach((t) => t.stop());
       setCallActive(true);
       setElapsed(0);
       isEndingRef.current = false;
