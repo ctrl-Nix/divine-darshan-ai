@@ -1,10 +1,80 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Phone, PhoneOff, Loader2, MicOff } from "lucide-react";
+import { Phone, PhoneOff, MicOff } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import ReactMarkdown from "react-markdown";
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/gita-chat`;
+
+type CallLang = "en" | "hi";
+type VoiceLang = "en-IN" | "hi-IN";
+
+const stripMarkdownForSpeech = (text: string) =>
+  text
+    .replace(/[*#>_~`]/g, "")
+    .replace(/\[.*?\]\(.*?\)/g, "")
+    .replace(/🙏.*$/gm, "")
+    .replace(/\n{2,}/g, "\n")
+    .trim();
+
+const splitSpeechChunks = (text: string, maxLen = 180): string[] => {
+  const parts = text.match(/[^.!?।\n]+[.!?।\n]*/g)?.map((p) => p.trim()).filter(Boolean) ?? [text];
+  const chunks: string[] = [];
+  let current = "";
+
+  for (const part of parts) {
+    if ((`${current} ${part}`).trim().length <= maxLen) {
+      current = `${current} ${part}`.trim();
+      continue;
+    }
+    if (current) chunks.push(current);
+    if (part.length <= maxLen) {
+      current = part;
+    } else {
+      for (let i = 0; i < part.length; i += maxLen) {
+        chunks.push(part.slice(i, i + maxLen));
+      }
+      current = "";
+    }
+  }
+
+  if (current) chunks.push(current);
+  return chunks.length ? chunks : [text];
+};
+
+const loadVoices = async (): Promise<SpeechSynthesisVoice[]> => {
+  if (typeof window === "undefined" || !window.speechSynthesis) return [];
+
+  const existing = window.speechSynthesis.getVoices();
+  if (existing.length) return existing;
+
+  return new Promise((resolve) => {
+    const onVoicesChanged = () => {
+      const voices = window.speechSynthesis.getVoices();
+      if (voices.length) {
+        window.speechSynthesis.removeEventListener("voiceschanged", onVoicesChanged);
+        resolve(voices);
+      }
+    };
+
+    window.speechSynthesis.addEventListener("voiceschanged", onVoicesChanged);
+
+    setTimeout(() => {
+      window.speechSynthesis.removeEventListener("voiceschanged", onVoicesChanged);
+      resolve(window.speechSynthesis.getVoices());
+    }, 1800);
+  });
+};
+
+const pickVoice = (voices: SpeechSynthesisVoice[], lang: VoiceLang) => {
+  const base = lang.split("-")[0].toLowerCase();
+  return (
+    voices.find((v) => v.lang.toLowerCase() === lang.toLowerCase()) ||
+    voices.find((v) => v.lang.toLowerCase().startsWith(base)) ||
+    null
+  );
+};
 
 const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
   const [status, setStatus] = useState<"idle" | "listening" | "thinking" | "speaking" | "choosing">("choosing");
@@ -12,17 +82,15 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
   const [response, setResponse] = useState("");
   const [callActive, setCallActive] = useState(false);
   const [elapsed, setElapsed] = useState(0);
-  const [voiceLang, setVoiceLang] = useState<"hi-IN" | "en-IN">("hi-IN");
-  const [chatLang, setChatLang] = useState<"en" | "hi">("hi");
+  const [voiceLang, setVoiceLang] = useState<VoiceLang>("hi-IN");
+  const [chatLang, setChatLang] = useState<CallLang>("hi");
+
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const conversationRef = useRef<{ role: string; content: string }[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval>>();
-  const synthRef = useRef<SpeechSynthesisUtterance | null>(null);
   const isEndingRef = useRef(false);
-  const silenceTimerRef = useRef<ReturnType<typeof setTimeout>>();
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  const silenceCheckRef = useRef<ReturnType<typeof setInterval>>();
+  const activeRecordTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
 
   useEffect(() => {
     if (callActive) {
@@ -34,6 +102,66 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
   const formatTime = (s: number) =>
     `${Math.floor(s / 60).toString().padStart(2, "0")}:${(s % 60).toString().padStart(2, "0")}`;
 
+  const speakText = useCallback(async (text: string) => {
+    if (!window.speechSynthesis) return;
+
+    const speechText = stripMarkdownForSpeech(text);
+    if (!speechText) return;
+
+    const voices = await loadVoices();
+    const selectedVoice = pickVoice(voices, voiceLang);
+    const chunks = splitSpeechChunks(speechText);
+
+    for (const chunk of chunks) {
+      if (isEndingRef.current) break;
+      await new Promise<void>((resolve) => {
+        const utterance = new SpeechSynthesisUtterance(chunk);
+        utterance.lang = voiceLang;
+        utterance.rate = 0.9;
+        utterance.pitch = 1;
+        if (selectedVoice) utterance.voice = selectedVoice;
+        utterance.onend = () => resolve();
+        utterance.onerror = () => resolve();
+        window.speechSynthesis.speak(utterance);
+      });
+    }
+  }, [voiceLang]);
+
+  const startListening = useCallback(async () => {
+    if (isEndingRef.current) return;
+
+    setStatus("listening");
+    setTranscript("");
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+      mediaRecorderRef.current = recorder;
+      chunksRef.current = [];
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data);
+      };
+
+      recorder.onstop = async () => {
+        clearTimeout(activeRecordTimeoutRef.current);
+        stream.getTracks().forEach((t) => t.stop());
+        if (isEndingRef.current) return;
+        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+        await processAudio(blob);
+      };
+
+      recorder.start();
+
+      // Safety cap only; no short involuntary cut-off
+      activeRecordTimeoutRef.current = setTimeout(() => {
+        if (recorder.state === "recording") recorder.stop();
+      }, 120000);
+    } catch {
+      toast.error(chatLang === "hi" ? "माइक्रोफोन में समस्या है।" : "Microphone error.");
+    }
+  }, [chatLang]);
+
   const startCall = useCallback(async () => {
     try {
       await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -43,24 +171,29 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
       conversationRef.current = [];
 
       const greeting = chatLang === "hi"
-        ? "जय श्री कृष्ण! मैं आपका गीता मार्गदर्शक हूँ। अपने मन की बात बताइए।"
-        : "Jai Shri Krishna! I am here to guide you. Please share what's on your mind.";
+        ? "जय श्री कृष्ण। आराम से बोलिए, मैं ध्यान से सुन रहा हूँ। जब पूरा हो जाए तो 'बोल चुका/चुकी' दबाएँ।"
+        : "Jai Shri Krishna. Speak comfortably, I'm listening carefully. Press Done Speaking when you finish.";
 
       setStatus("speaking");
       setResponse(greeting);
       await speakText(greeting);
       if (!isEndingRef.current) startListening();
     } catch {
-      toast.error("Microphone access is required for voice calls.");
+      toast.error(chatLang === "hi" ? "कॉल के लिए माइक्रोफोन अनुमति दें।" : "Microphone access is required for voice calls.");
     }
-  }, [chatLang]);
+  }, [chatLang, speakText, startListening]);
+
+  const stopListening = useCallback(() => {
+    if (mediaRecorderRef.current?.state === "recording") {
+      mediaRecorderRef.current.stop();
+    }
+  }, []);
 
   const endCall = useCallback(() => {
     isEndingRef.current = true;
     window.speechSynthesis.cancel();
+    clearTimeout(activeRecordTimeoutRef.current);
     mediaRecorderRef.current?.stop();
-    clearInterval(silenceCheckRef.current);
-    clearTimeout(silenceTimerRef.current);
     setCallActive(false);
     setStatus("idle");
     setTranscript("");
@@ -68,107 +201,11 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
     clearInterval(timerRef.current);
   }, []);
 
-  const speakText = (text: string): Promise<void> => {
-    return new Promise((resolve) => {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = voiceLang;
-      utterance.rate = 0.9;
-      utterance.pitch = 1.0;
-      synthRef.current = utterance;
-      utterance.onend = () => resolve();
-      utterance.onerror = () => resolve();
-      window.speechSynthesis.speak(utterance);
-    });
-  };
-
-  const startListening = useCallback(async () => {
-    if (isEndingRef.current) return;
-    setStatus("listening");
-    setTranscript("");
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
-      mediaRecorderRef.current = recorder;
-      chunksRef.current = [];
-
-      // Set up silence detection using Web Audio API
-      const audioCtx = new AudioContext();
-      const source = audioCtx.createMediaStreamSource(stream);
-      const analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 512;
-      source.connect(analyser);
-      analyserRef.current = analyser;
-
-      const dataArray = new Uint8Array(analyser.frequencyBinCount);
-      let silentSince: number | null = null;
-      const SILENCE_THRESHOLD = 15; // amplitude threshold
-      const SILENCE_DURATION = 3000; // 3 seconds of silence before auto-stop
-      const MAX_RECORD_TIME = 60000; // max 60 seconds
-
-      // Check for silence periodically
-      silenceCheckRef.current = setInterval(() => {
-        analyser.getByteTimeDomainData(dataArray);
-        let maxAmplitude = 0;
-        for (let i = 0; i < dataArray.length; i++) {
-          const val = Math.abs(dataArray[i] - 128);
-          if (val > maxAmplitude) maxAmplitude = val;
-        }
-
-        if (maxAmplitude < SILENCE_THRESHOLD) {
-          if (!silentSince) silentSince = Date.now();
-          else if (Date.now() - silentSince > SILENCE_DURATION) {
-            // User has been silent for 3 seconds — auto-stop
-            if (recorder.state === "recording") {
-              clearInterval(silenceCheckRef.current);
-              recorder.stop();
-            }
-          }
-        } else {
-          silentSince = null; // Reset on speech detected
-        }
-      }, 200);
-
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunksRef.current.push(e.data);
-      };
-
-      recorder.onstop = async () => {
-        clearInterval(silenceCheckRef.current);
-        stream.getTracks().forEach((t) => t.stop());
-        audioCtx.close();
-        if (isEndingRef.current) return;
-        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
-        await processAudio(blob);
-      };
-
-      recorder.start();
-
-      // Hard max limit of 60 seconds
-      setTimeout(() => {
-        if (recorder.state === "recording") {
-          clearInterval(silenceCheckRef.current);
-          recorder.stop();
-        }
-      }, MAX_RECORD_TIME);
-    } catch {
-      toast.error("Microphone error");
-    }
-  }, []);
-
-  const stopListening = useCallback(() => {
-    clearInterval(silenceCheckRef.current);
-    if (mediaRecorderRef.current?.state === "recording") {
-      mediaRecorderRef.current.stop();
-    }
-  }, []);
-
   const processAudio = async (blob: Blob) => {
     if (isEndingRef.current) return;
     setStatus("thinking");
 
     try {
-      // STT
       const reader = new FileReader();
       const base64 = await new Promise<string>((resolve) => {
         reader.onloadend = () => resolve((reader.result as string).split(",")[1]);
@@ -182,7 +219,7 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
 
       const userText = sttData?.text?.trim();
       if (!userText) {
-        toast(chatLang === "hi" ? "सुन नहीं पाया, कृपया फिर से बोलें।" : "I couldn't hear that. Please try again.");
+        toast(chatLang === "hi" ? "सुन नहीं पाया, फिर से बोलिए।" : "I couldn't hear that. Please try again.");
         if (!isEndingRef.current) startListening();
         return;
       }
@@ -190,7 +227,6 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
       setTranscript(userText);
       conversationRef.current.push({ role: "user", content: userText });
 
-      // Get AI response
       const resp = await fetch(CHAT_URL, {
         method: "POST",
         headers: {
@@ -200,10 +236,9 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
         body: JSON.stringify({ messages: conversationRef.current, language: chatLang }),
       });
 
-      if (!resp.ok) throw new Error("AI request failed");
+      if (!resp.ok || !resp.body) throw new Error("AI request failed");
 
-      // Parse SSE stream
-      const responseReader = resp.body!.getReader();
+      const responseReader = resp.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
       let fullText = "";
@@ -211,6 +246,7 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
       while (true) {
         const { done, value } = await responseReader.read();
         if (done) break;
+
         buffer += decoder.decode(value, { stream: true });
 
         let idx: number;
@@ -219,39 +255,39 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
           buffer = buffer.slice(idx + 1);
           if (line.endsWith("\r")) line = line.slice(0, -1);
           if (!line.startsWith("data: ")) continue;
+
           const json = line.slice(6).trim();
-          if (json === "[DONE]") break;
+          if (json === "[DONE]") continue;
+
           try {
             const parsed = JSON.parse(json);
-            const content = parsed.choices?.[0]?.delta?.content;
+            const content = parsed.choices?.[0]?.delta?.content as string | undefined;
             if (content) fullText += content;
-          } catch {}
+          } catch {
+            // ignore malformed partial chunks
+          }
         }
       }
 
       if (isEndingRef.current) return;
 
-      // Clean markdown for speech
-      const cleanText = fullText
-        .replace(/[*#>_~`]/g, "")
-        .replace(/\[.*?\]\(.*?\)/g, "")
-        .replace(/🙏.*$/gm, "")
-        .trim();
+      if (!fullText.trim()) {
+        throw new Error("Empty AI response");
+      }
 
       conversationRef.current.push({ role: "assistant", content: fullText });
       setResponse(fullText);
       setStatus("speaking");
-      await speakText(cleanText);
+      await speakText(fullText);
 
       if (!isEndingRef.current) startListening();
-    } catch (e: any) {
+    } catch (e) {
       console.error("Call error:", e);
-      toast.error("Something went wrong. Please try again.");
+      toast.error(chatLang === "hi" ? "कुछ गलती हुई, दोबारा कोशिश करें।" : "Something went wrong. Please try again.");
       if (!isEndingRef.current) startListening();
     }
   };
 
-  // Visualizer bars
   const bars = 12;
 
   return (
@@ -261,64 +297,44 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
       exit={{ opacity: 0 }}
       className="flex flex-col items-center justify-center h-screen bg-background relative overflow-hidden"
     >
-      {/* Background ambient */}
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute top-1/3 left-1/3 w-[500px] h-[500px] rounded-full bg-primary/5 blur-[150px] glow-pulse" />
         <div className="absolute bottom-1/3 right-1/3 w-[400px] h-[400px] rounded-full bg-peacock/5 blur-[120px] glow-pulse" style={{ animationDelay: "2s" }} />
       </div>
 
-      {/* Main content */}
-      <div className="relative z-10 flex flex-col items-center gap-8 px-6 max-w-lg w-full">
-        {/* Status text */}
+      <div className="relative z-10 flex flex-col items-center gap-6 px-6 max-w-xl w-full">
         <motion.p
           key={status}
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="text-sm font-body text-muted-foreground tracking-wider uppercase"
+          className="text-sm font-body text-muted-foreground tracking-wider uppercase text-center"
         >
           {!callActive
-            ? (chatLang === "hi" ? "कॉल शुरू करें" : "Ready to call")
+            ? (chatLang === "hi" ? "कॉल के लिए तैयार" : "Ready to call")
             : status === "listening"
-            ? "🎙️ Listening... (speak freely, I'll wait)"
-            : status === "thinking"
-            ? "🙏 Finding wisdom..."
-            : status === "speaking"
-            ? "🗣️ Speaking..."
-            : ""}
+              ? (chatLang === "hi" ? "🎙️ सुन रहा हूँ... आराम से बोलिए" : "🎙️ Listening... take your time")
+              : status === "thinking"
+                ? (chatLang === "hi" ? "🙏 गीता से उत्तर ढूंढ रहा हूँ..." : "🙏 Finding wisdom from Gita...")
+                : status === "speaking"
+                  ? (chatLang === "hi" ? "🗣️ बोल रहा हूँ..." : "🗣️ Speaking...")
+                  : ""}
         </motion.p>
 
-        {/* Central orb */}
         <div className="relative">
-          {callActive && (
-            <>
-              {[1, 2, 3].map((i) => (
-                <motion.div
-                  key={i}
-                  className="absolute inset-0 rounded-full border border-primary/20"
-                  style={{ margin: `-${i * 20}px` }}
-                  animate={{
-                    scale: status === "speaking" ? [1, 1.1, 1] : status === "listening" ? [1, 1.05, 1] : 1,
-                    opacity: [0.3, 0.1, 0.3],
-                  }}
-                  transition={{ duration: 2, repeat: Infinity, delay: i * 0.3, ease: "easeInOut" }}
-                />
-              ))}
-            </>
-          )}
+          {callActive && [1, 2, 3].map((i) => (
+            <motion.div
+              key={i}
+              className="absolute inset-0 rounded-full border border-primary/20"
+              style={{ margin: `-${i * 20}px` }}
+              animate={{
+                scale: status === "speaking" ? [1, 1.1, 1] : status === "listening" ? [1, 1.05, 1] : 1,
+                opacity: [0.3, 0.1, 0.3],
+              }}
+              transition={{ duration: 2, repeat: Infinity, delay: i * 0.3, ease: "easeInOut" }}
+            />
+          ))}
 
           <motion.div
-            animate={
-              callActive
-                ? {
-                    boxShadow:
-                      status === "speaking"
-                        ? ["0 0 30px hsl(36 90% 55% / 0.3)", "0 0 60px hsl(36 90% 55% / 0.5)", "0 0 30px hsl(36 90% 55% / 0.3)"]
-                        : status === "listening"
-                        ? ["0 0 30px hsl(180 60% 40% / 0.3)", "0 0 50px hsl(180 60% 40% / 0.5)", "0 0 30px hsl(180 60% 40% / 0.3)"]
-                        : "0 0 20px hsl(36 90% 55% / 0.2)",
-                  }
-                : {}
-            }
             transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
             className="w-40 h-40 md:w-48 md:h-48 rounded-full bg-gradient-divine flex items-center justify-center shadow-divine"
           >
@@ -326,76 +342,66 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
           </motion.div>
         </div>
 
-        {/* Audio visualizer */}
         {callActive && (
-          <div className="flex items-center gap-1 h-12">
+          <div className="flex items-center gap-1 h-10">
             {Array.from({ length: bars }).map((_, i) => (
               <motion.div
                 key={i}
-                className={`w-1 rounded-full ${
-                  status === "speaking" ? "bg-primary" : status === "listening" ? "bg-peacock" : "bg-muted-foreground/30"
-                }`}
-                animate={{
-                  height: status === "speaking" || status === "listening" ? [8, Math.random() * 40 + 8, 8] : 8,
-                }}
+                className={`w-1 rounded-full ${status === "speaking" ? "bg-primary" : status === "listening" ? "bg-peacock" : "bg-muted-foreground/30"}`}
+                animate={{ height: status === "speaking" || status === "listening" ? [8, Math.random() * 30 + 8, 8] : 8 }}
                 transition={{ duration: 0.4 + Math.random() * 0.3, repeat: Infinity, delay: i * 0.05, ease: "easeInOut" }}
               />
             ))}
           </div>
         )}
 
-        {/* Timer */}
-        {callActive && (
-          <p className="font-body text-lg text-foreground/80 tabular-nums">{formatTime(elapsed)}</p>
-        )}
+        {callActive && <p className="font-body text-lg text-foreground/80 tabular-nums">{formatTime(elapsed)}</p>}
 
-        {/* Listening hint */}
-        {callActive && status === "listening" && (
-          <motion.p
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="text-xs text-muted-foreground font-body text-center"
+        {transcript && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-card/60 border border-border rounded-2xl px-5 py-3 w-full"
           >
-            {chatLang === "hi"
-              ? "आराम से बोलिए... चुप होने पर अपने आप सुन लूँगा"
-              : "Take your time... I'll auto-detect when you're done"}
-          </motion.p>
+            <p className="text-xs text-muted-foreground mb-1 font-body">{chatLang === "hi" ? "आपने कहा:" : "You said:"}</p>
+            <p className="text-sm font-body text-foreground">{transcript}</p>
+          </motion.div>
         )}
 
-        {/* Transcript / Response */}
-        <AnimatePresence mode="wait">
-          {transcript && (
-            <motion.div
-              key="transcript"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              className="bg-card/60 border border-border rounded-2xl px-5 py-3 max-w-full w-full"
-            >
-              <p className="text-xs text-muted-foreground mb-1 font-body">{chatLang === "hi" ? "आपने कहा:" : "You said:"}</p>
-              <p className="text-sm font-body text-foreground">{transcript}</p>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {response && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-card/60 border border-border rounded-2xl px-5 py-3 w-full max-h-36 overflow-y-auto"
+          >
+            <p className="text-xs text-muted-foreground mb-1 font-body">{chatLang === "hi" ? "उत्तर:" : "Response:"}</p>
+            <div className="text-sm font-body text-foreground leading-relaxed">
+              <ReactMarkdown>{response}</ReactMarkdown>
+            </div>
+          </motion.div>
+        )}
 
-        {/* Language choice screen */}
         {status === "choosing" && !callActive && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             className="flex flex-col items-center gap-6 w-full"
           >
-            <p className="font-body text-foreground text-lg font-medium">Choose your language / भाषा चुनें</p>
+            <p className="font-body text-foreground text-lg font-medium">Choose language / भाषा चुनें</p>
             <div className="flex gap-4">
-              {([
-                { code: "hi-IN" as const, lang: "hi" as const, label: "हिंदी", sub: "Hindi" },
-                { code: "en-IN" as const, lang: "en" as const, label: "English", sub: "English" },
-              ]).map((l) => (
+              {[
+                { code: "hi-IN" as VoiceLang, lang: "hi" as CallLang, label: "हिंदी", sub: "Hindi" },
+                { code: "en-IN" as VoiceLang, lang: "en" as CallLang, label: "English", sub: "English" },
+              ].map((l) => (
                 <motion.button
                   key={l.code}
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
-                  onClick={() => { setVoiceLang(l.code); setChatLang(l.lang); setStatus("idle"); }}
+                  onClick={() => {
+                    setVoiceLang(l.code);
+                    setChatLang(l.lang);
+                    setStatus("idle");
+                  }}
                   className={`px-8 py-5 rounded-2xl border-2 font-body text-center transition-all ${
                     voiceLang === l.code
                       ? "border-primary bg-primary/10 text-primary"
@@ -410,15 +416,14 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
           </motion.div>
         )}
 
-        {/* Call/End button */}
         {status !== "choosing" && (
-          <div className="flex items-center gap-6 mt-4">
+          <div className="flex items-center gap-4 mt-2">
             {!callActive ? (
               <motion.button
                 whileHover={{ scale: 1.1 }}
                 whileTap={{ scale: 0.9 }}
                 onClick={startCall}
-                className="w-20 h-20 rounded-full bg-green-600 hover:bg-green-500 text-white flex items-center justify-center shadow-lg transition-colors"
+                className="w-20 h-20 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-divine transition-opacity hover:opacity-90"
               >
                 <Phone size={32} />
               </motion.button>
@@ -426,19 +431,23 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
               <>
                 {status === "listening" && (
                   <motion.button
-                    whileTap={{ scale: 0.9 }}
+                    whileTap={{ scale: 0.95 }}
                     onClick={stopListening}
-                    className="px-6 py-3 rounded-xl bg-primary/20 text-primary font-body text-sm border border-primary/30 flex items-center gap-2"
+                    className="px-5 py-3 rounded-xl bg-secondary text-secondary-foreground font-body text-sm border border-border flex items-center gap-2"
                   >
                     <MicOff size={16} />
-                    {chatLang === "hi" ? "बोल चुका/चुकी" : "Done speaking"}
+                    {chatLang === "hi" ? "बोल चुका/चुकी" : "Done Speaking"}
                   </motion.button>
                 )}
+
                 <motion.button
                   whileHover={{ scale: 1.1 }}
                   whileTap={{ scale: 0.9 }}
-                  onClick={() => { endCall(); onEnd(); }}
-                  className="w-20 h-20 rounded-full bg-red-600 hover:bg-red-500 text-white flex items-center justify-center shadow-lg transition-colors"
+                  onClick={() => {
+                    endCall();
+                    onEnd();
+                  }}
+                  className="w-20 h-20 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center shadow-lg transition-opacity hover:opacity-90"
                 >
                   <PhoneOff size={32} />
                 </motion.button>
@@ -447,23 +456,12 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
           </div>
         )}
 
-        {!callActive && status !== "choosing" && (
+        {!callActive && (
           <motion.button
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             onClick={onEnd}
-            className="text-sm font-body text-muted-foreground hover:text-foreground transition-colors mt-2"
-          >
-            ← Back to home
-          </motion.button>
-        )}
-
-        {status === "choosing" && (
-          <motion.button
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            onClick={onEnd}
-            className="text-sm font-body text-muted-foreground hover:text-foreground transition-colors mt-4"
+            className="text-sm font-body text-muted-foreground hover:text-foreground transition-colors"
           >
             ← Back to home
           </motion.button>
