@@ -331,7 +331,40 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
           )}
         </AnimatePresence>
 
+        {/* Language choice screen */}
+        {status === "choosing" && !callActive && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex flex-col items-center gap-6 w-full"
+          >
+            <p className="font-body text-foreground text-lg font-medium">Choose your language</p>
+            <div className="flex gap-4">
+              {([
+                { code: "hi-IN" as const, label: "हिंदी", sub: "Hindi" },
+                { code: "en-IN" as const, label: "English", sub: "English" },
+              ]).map((lang) => (
+                <motion.button
+                  key={lang.code}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => { setVoiceLang(lang.code); setStatus("idle"); }}
+                  className={`px-8 py-5 rounded-2xl border-2 font-body text-center transition-all ${
+                    voiceLang === lang.code
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border bg-card text-foreground hover:border-primary/40"
+                  }`}
+                >
+                  <p className="text-xl font-semibold">{lang.label}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{lang.sub}</p>
+                </motion.button>
+              ))}
+            </div>
+          </motion.div>
+        )}
+
         {/* Call/End button */}
+        {status !== "choosing" && (
         <div className="flex items-center gap-6 mt-4">
           {!callActive ? (
             <motion.button
@@ -364,13 +397,25 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
             </>
           )}
         </div>
+        )}
 
-        {!callActive && (
+        {!callActive && status !== "choosing" && (
           <motion.button
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             onClick={onEnd}
             className="text-sm font-body text-muted-foreground hover:text-foreground transition-colors mt-2"
+          >
+            ← Back to home
+          </motion.button>
+        )}
+
+        {status === "choosing" && (
+          <motion.button
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            onClick={onEnd}
+            className="text-sm font-body text-muted-foreground hover:text-foreground transition-colors mt-4"
           >
             ← Back to home
           </motion.button>
