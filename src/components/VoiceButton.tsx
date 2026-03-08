@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 
 interface VoiceButtonProps {
   onResult: (text: string) => void;
+  languageCode?: string;
 }
 
 const VoiceButton = ({ onResult }: VoiceButtonProps) => {
