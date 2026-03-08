@@ -139,6 +139,14 @@ serve(async (req) => {
       });
     }
 
+    if (!stream) {
+      const data = await response.json();
+      const text = data?.choices?.[0]?.message?.content?.trim?.() ?? "";
+      return new Response(JSON.stringify({ text }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     return new Response(response.body, {
       headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
     });
