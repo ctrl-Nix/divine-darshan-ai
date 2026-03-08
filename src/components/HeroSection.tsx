@@ -134,12 +134,13 @@ const HeroSection = ({ onStartChat, onStartCall }: { onStartChat: () => void; on
               </motion.button>
 
               <motion.button
-                whileHover={{ scale: 1.05 }}
+                whileHover={{ scale: 1.05, boxShadow: "0 0 30px hsl(120 40% 40% / 0.3)" }}
                 whileTap={{ scale: 0.95 }}
-                onClick={onStartChat}
-                className="px-8 py-4 rounded-2xl border border-primary/30 font-body font-medium text-primary hover:bg-primary/10 transition-all duration-300 flex items-center gap-3 justify-center"
+                onClick={onStartCall}
+                className="group px-8 py-4 rounded-2xl border-2 border-green-500/40 bg-green-500/10 font-body font-semibold text-green-400 hover:bg-green-500/20 transition-all duration-300 flex items-center gap-3 justify-center"
               >
-                🎙️ Voice Chat (Hindi)
+                <Phone size={20} className="group-hover:animate-pulse" />
+                🎙️ Call Gita Guide
               </motion.button>
             </div>
           </motion.div>
