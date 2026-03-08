@@ -98,6 +98,7 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
       const utterance = new SpeechSynthesisUtterance(speechText);
       utterance.lang = voiceLang;
       utterance.rate = 0.9;
+      utterance.volume = 1.0;
       utterance.pitch = 1;
 
       // Try to pick a matching voice
