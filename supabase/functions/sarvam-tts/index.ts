@@ -29,9 +29,8 @@ serve(async (req) => {
       });
     }
 
-    // Always use hi-IN for TTS — even English text with Sanskrit words
-    // sounds better with Hindi pronunciation rules
-    const ttsLang = language_code === "en-IN" ? "en-IN" : "hi-IN";
+    // Pick speaker based on language
+    const speaker = language_code === "en-IN" ? "maya" : "anushka";
 
     const ttsResponse = await fetch("https://api.sarvam.ai/text-to-speech", {
       method: "POST",
@@ -40,13 +39,11 @@ serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        text: normalizedText,
-        target_language_code: ttsLang,
-        model: "bulbul:v3",
-        speaker: "advait",
+        inputs: [normalizedText],
+        target_language_code: language_code,
+        model: "bulbul:v2",
+        speaker,
         pace: 0.85,
-        temperature: 0.4,
-        speech_sample_rate: 24000,
         enable_preprocessing: true,
       }),
     });
@@ -60,27 +57,22 @@ serve(async (req) => {
       });
     }
 
-    let parsed: { audios?: string[]; audio?: string } | null = null;
+    let parsed: { audios?: string[] } | null = null;
     try {
       parsed = JSON.parse(bodyText);
     } catch {
       parsed = null;
     }
 
-    const audioChunks = Array.isArray(parsed?.audios)
-      ? parsed.audios.filter((chunk): chunk is string => typeof chunk === "string" && chunk.length > 0)
-      : typeof parsed?.audio === "string" && parsed.audio.length > 0
-        ? [parsed.audio]
-        : [];
-
-    if (!audioChunks.length) {
+    const audioContent = parsed?.audios?.[0];
+    if (!audioContent) {
       return new Response(JSON.stringify({ error: "No audio returned from TTS provider" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    return new Response(JSON.stringify({ audios: audioChunks, mimeType: "audio/wav" }), {
+    return new Response(JSON.stringify({ audio: audioContent }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
