@@ -197,8 +197,9 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
         const dataArray = new Uint8Array(analyser.frequencyBinCount);
 
         let silenceStart: number | null = null;
-        const SILENCE_THRESHOLD = 10;
-        const SILENCE_DURATION = 1800;
+        let hasSpoken = false;
+        const SILENCE_THRESHOLD = 8;
+        const SILENCE_DURATION = 2500; // 2.5s of silence before auto-stop
 
         const checkSilence = () => {
           if (recorder.state !== "recording" || isEndingRef.current) return;
@@ -208,21 +209,24 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
             dataArray.reduce((sum, v) => sum + (v - 128) ** 2, 0) / dataArray.length
           );
 
-          if (rms < SILENCE_THRESHOLD) {
+          if (rms >= SILENCE_THRESHOLD) {
+            hasSpoken = true;
+            silenceStart = null;
+          } else if (hasSpoken) {
+            // Only start silence timer AFTER user has spoken at least once
             if (!silenceStart) silenceStart = Date.now();
             else if (Date.now() - silenceStart > SILENCE_DURATION) {
               recorder.stop();
               audioContext.close();
               return;
             }
-          } else {
-            silenceStart = null;
           }
 
           requestAnimationFrame(checkSilence);
         };
 
-        setTimeout(() => requestAnimationFrame(checkSilence), 1500);
+        // Start checking after 2s to give user time to begin speaking
+        setTimeout(() => requestAnimationFrame(checkSilence), 2000);
 
         analyserCleanupRef.current = () => {
           source.disconnect();
