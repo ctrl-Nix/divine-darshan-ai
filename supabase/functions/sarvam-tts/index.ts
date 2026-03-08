@@ -10,7 +10,7 @@ serve(async (req) => {
 
   try {
     const { text, language_code } = await req.json();
-    const speaker = language_code === "en-IN" ? "arya" : "karun";
+    const speaker = language_code === "en-IN" ? "vidya" : "manisha";
 
     const apiKey = Deno.env.get("SARVAM_API_KEY");
     if (!apiKey) {
