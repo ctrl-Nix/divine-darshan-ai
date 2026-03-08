@@ -9,7 +9,7 @@ interface VoiceButtonProps {
   languageCode?: string;
 }
 
-const VoiceButton = ({ onResult }: VoiceButtonProps) => {
+const VoiceButton = ({ onResult, languageCode = "hi-IN" }: VoiceButtonProps) => {
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
