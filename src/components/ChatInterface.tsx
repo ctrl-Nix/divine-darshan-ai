@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, ArrowLeft, Sparkles } from "lucide-react";
+import { Send, ArrowLeft, Sparkles, Globe } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { toast } from "sonner";
 import VoiceButton from "./VoiceButton";
