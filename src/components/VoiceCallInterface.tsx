@@ -355,8 +355,11 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
       recorder.start();
 
       activeRecordTimeoutRef.current = setTimeout(() => {
-        if (recorder.state === "recording") recorder.stop();
-      }, 120000);
+        if (recorder.state === "recording") {
+          toast(chatLang === "hi" ? "30 सेकंड के अंदर बोलना पूरा करें।" : "Please complete speaking within 30 seconds.");
+          recorder.stop();
+        }
+      }, 28000);
     } catch (err) {
       console.error("Mic error:", err);
       toast.error(chatLang === "hi" ? "माइक्रोफोन में समस्या है।" : "Microphone error.");
