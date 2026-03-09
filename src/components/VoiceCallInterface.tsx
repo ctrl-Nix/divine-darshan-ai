@@ -53,14 +53,9 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
     if (!cleanedText) return;
 
     // Try Sarvam TTS first
-    let sarvamPlayFailed = false;
-    try {
-      const { data, error } = await supabase.functions.invoke("sarvam-tts", {
-        body: { text: cleanedText, language_code: voiceLang },
-      });
-      if (error) throw error;
-      if (data?.audio) {
-        const byteChars = atob(data.audio);
+    const playSarvamClip = (base64Audio: string) =>
+      new Promise<boolean>((resolve) => {
+        const byteChars = atob(base64Audio);
         const byteArray = new Uint8Array(byteChars.length);
         for (let i = 0; i < byteChars.length; i++) byteArray[i] = byteChars.charCodeAt(i);
         const blob = new Blob([byteArray], { type: "audio/wav" });
@@ -68,14 +63,43 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
         const audio = new Audio(url);
         audio.setAttribute("playsinline", "true");
         audioRef.current = audio;
-        const played = await new Promise<boolean>((resolve) => {
-          audio.onended = () => { URL.revokeObjectURL(url); audioRef.current = null; resolve(true); };
-          audio.onerror = () => { URL.revokeObjectURL(url); audioRef.current = null; resolve(false); };
-          audio.play().catch(() => { URL.revokeObjectURL(url); audioRef.current = null; resolve(false); });
+
+        audio.onended = () => {
+          URL.revokeObjectURL(url);
+          audioRef.current = null;
+          resolve(true);
+        };
+        audio.onerror = () => {
+          URL.revokeObjectURL(url);
+          audioRef.current = null;
+          resolve(false);
+        };
+        audio.play().catch(() => {
+          URL.revokeObjectURL(url);
+          audioRef.current = null;
+          resolve(false);
         });
-        if (played) return; // Sarvam audio played successfully
-        sarvamPlayFailed = true;
-        console.warn("Sarvam audio play blocked (likely iOS), falling back to browser TTS");
+      });
+
+    try {
+      const { data, error } = await supabase.functions.invoke("sarvam-tts", {
+        body: { text: cleanedText, language_code: voiceLang },
+      });
+      if (error) throw error;
+
+      const audioClips: string[] = Array.isArray(data?.audios) && data.audios.length
+        ? data.audios
+        : data?.audio
+          ? [data.audio]
+          : [];
+
+      if (audioClips.length) {
+        for (const clip of audioClips) {
+          if (isEndingRef.current) return;
+          const played = await playSarvamClip(clip);
+          if (!played) throw new Error("Sarvam audio playback blocked");
+        }
+        return;
       }
     } catch (e) {
       console.warn("Sarvam TTS failed, falling back to browser TTS", e);

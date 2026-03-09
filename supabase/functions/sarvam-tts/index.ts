@@ -71,7 +71,10 @@ serve(async (req) => {
 
     const json = await res.json();
 
-    return new Response(JSON.stringify({ audio: json.audios?.[0] }), {
+    return new Response(JSON.stringify({
+      audio: json.audios?.[0] ?? null,
+      audios: Array.isArray(json.audios) ? json.audios : [],
+    }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
