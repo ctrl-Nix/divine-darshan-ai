@@ -342,179 +342,187 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
     };
   }, []);
 
-  const bars = 12;
+  const bars = 10;
 
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
+      transition={{ duration: 0.3 }}
       className="flex flex-col items-center justify-center h-screen bg-background relative overflow-hidden"
     >
-      <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-1/3 left-1/3 w-[500px] h-[500px] rounded-full bg-primary/5 blur-[150px] glow-pulse" />
-        <div className="absolute bottom-1/3 right-1/3 w-[400px] h-[400px] rounded-full bg-peacock/5 blur-[120px] glow-pulse" style={{ animationDelay: "2s" }} />
-      </div>
+      {/* Ambient glow */}
+      <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] rounded-full bg-primary/[0.03] blur-[120px] pointer-events-none" />
 
-      <div className="relative z-10 flex flex-col items-center gap-6 px-6 max-w-xl w-full">
+      <div className="relative z-10 flex flex-col items-center gap-5 px-6 max-w-md w-full">
+        {/* Status text */}
         <motion.p
           key={status}
-          initial={{ opacity: 0, y: -10 }}
+          initial={{ opacity: 0, y: -6 }}
           animate={{ opacity: 1, y: 0 }}
-          className="text-sm font-body text-muted-foreground tracking-wider uppercase text-center"
+          className="text-[11px] font-body text-muted-foreground tracking-[0.2em] uppercase text-center"
         >
           {!callActive
-            ? (chatLang === "hi" ? "कॉल शुरू करें" : "Ready to call")
+            ? chatLang === "hi" ? "कॉल शुरू करें" : "Ready to call"
             : status === "listening"
-              ? (chatLang === "hi" ? "🎙️ सुन रहा हूँ... आराम से बोलिए" : "🎙️ Listening... take your time")
+              ? chatLang === "hi" ? "सुन रहा हूँ..." : "Listening..."
               : status === "thinking"
-                ? (chatLang === "hi" ? "🙏 गीता से उत्तर ढूंढ रहा हूँ..." : "🙏 Finding wisdom...")
+                ? chatLang === "hi" ? "सोच रहा हूँ..." : "Finding wisdom..."
                 : status === "speaking"
-                  ? (chatLang === "hi" ? "🗣️ बोल रहा हूँ..." : "🗣️ Speaking...")
+                  ? chatLang === "hi" ? "बोल रहा हूँ..." : "Speaking..."
                   : ""}
         </motion.p>
 
-        <div className="relative">
-          {callActive && [1, 2, 3].map((i) => (
+        {/* Avatar */}
+        <div className="relative my-4">
+          {callActive && (
             <motion.div
-              key={i}
-              className="absolute inset-0 rounded-full border border-primary/20"
-              style={{ margin: `-${i * 20}px` }}
+              className="absolute -inset-4 rounded-full border border-primary/15"
               animate={{
-                scale: status === "speaking" ? [1, 1.1, 1] : status === "listening" ? [1, 1.05, 1] : 1,
+                scale: status === "speaking" || status === "listening" ? [1, 1.08, 1] : 1,
                 opacity: [0.3, 0.1, 0.3],
               }}
-              transition={{ duration: 2, repeat: Infinity, delay: i * 0.3, ease: "easeInOut" }}
+              transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
             />
-          ))}
-
-          <motion.div
-            className="w-40 h-40 md:w-48 md:h-48 rounded-full bg-gradient-divine flex items-center justify-center shadow-divine"
-          >
-            <span className="text-6xl md:text-7xl">🙏</span>
-          </motion.div>
+          )}
+          <div className="w-32 h-32 md:w-40 md:h-40 rounded-full bg-gradient-divine flex items-center justify-center shadow-divine">
+            <span className="text-5xl md:text-6xl">🙏</span>
+          </div>
         </div>
 
+        {/* Audio bars */}
         {callActive && (
-          <div className="flex items-center gap-1 h-10">
+          <div className="flex items-center gap-[3px] h-8">
             {Array.from({ length: bars }).map((_, i) => (
               <motion.div
                 key={i}
-                className={`w-1 rounded-full ${status === "speaking" ? "bg-primary" : status === "listening" ? "bg-peacock" : "bg-muted-foreground/30"}`}
-                animate={{ height: status === "speaking" || status === "listening" ? [8, Math.random() * 30 + 8, 8] : 8 }}
+                className={`w-[3px] rounded-full ${
+                  status === "speaking" ? "bg-primary" : status === "listening" ? "bg-peacock" : "bg-muted-foreground/20"
+                }`}
+                animate={{
+                  height: status === "speaking" || status === "listening"
+                    ? [6, Math.random() * 24 + 6, 6]
+                    : 6,
+                }}
                 transition={{ duration: 0.4 + Math.random() * 0.3, repeat: Infinity, delay: i * 0.05, ease: "easeInOut" }}
               />
             ))}
           </div>
         )}
 
-        {callActive && <p className="font-body text-lg text-foreground/80 tabular-nums">{formatTime(elapsed)}</p>}
+        {/* Timer */}
+        {callActive && (
+          <p className="font-body text-sm text-muted-foreground tabular-nums">{formatTime(elapsed)}</p>
+        )}
 
+        {/* Transcript */}
         {transcript && (
           <motion.div
-            initial={{ opacity: 0, y: 10 }}
+            initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-card/60 border border-border rounded-2xl px-5 py-3 w-full"
+            className="bg-card border border-border rounded-xl px-4 py-2.5 w-full"
           >
-            <p className="text-xs text-muted-foreground mb-1 font-body">{chatLang === "hi" ? "आपने कहा:" : "You said:"}</p>
+            <p className="text-[10px] text-muted-foreground mb-0.5 font-body uppercase tracking-wider">
+              {chatLang === "hi" ? "आपने कहा" : "You said"}
+            </p>
             <p className="text-sm font-body text-foreground">{transcript}</p>
           </motion.div>
         )}
 
+        {/* Response */}
         {response && (
           <motion.div
-            initial={{ opacity: 0, y: 10 }}
+            initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-card/60 border border-border rounded-2xl px-5 py-3 w-full max-h-36 overflow-y-auto"
+            className="bg-card border border-border rounded-xl px-4 py-2.5 w-full max-h-32 overflow-y-auto"
           >
-            <p className="text-xs text-muted-foreground mb-1 font-body">{chatLang === "hi" ? "उत्तर:" : "Response:"}</p>
+            <p className="text-[10px] text-muted-foreground mb-0.5 font-body uppercase tracking-wider">
+              {chatLang === "hi" ? "उत्तर" : "Response"}
+            </p>
             <div className="text-sm font-body text-foreground leading-relaxed">
               <ReactMarkdown>{response}</ReactMarkdown>
             </div>
           </motion.div>
         )}
 
+        {/* Language chooser */}
         {status === "choosing" && !callActive && (
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            className="flex flex-col items-center gap-6 w-full"
+            className="flex flex-col items-center gap-5 w-full mt-2"
           >
-            <p className="font-body text-foreground text-lg font-medium">Choose language / भाषा चुनें</p>
-            <div className="flex gap-4">
+            <p className="font-body text-foreground text-sm font-medium">
+              Choose language / भाषा चुनें
+            </p>
+            <div className="flex gap-3 w-full">
               {[
                 { code: "hi-IN" as VoiceLang, lang: "hi" as CallLang, label: "हिंदी", sub: "Hindi" },
                 { code: "en-IN" as VoiceLang, lang: "en" as CallLang, label: "English", sub: "English" },
               ].map((l) => (
-                <motion.button
+                <button
                   key={l.code}
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
                   onClick={() => {
                     setVoiceLang(l.code);
                     setChatLang(l.lang);
                     setStatus("idle");
                   }}
-                  className={`px-8 py-5 rounded-2xl border-2 font-body text-center transition-all ${
+                  className={`flex-1 py-4 rounded-xl border font-body text-center transition-all duration-200 ${
                     voiceLang === l.code
-                      ? "border-primary bg-primary/10 text-primary"
-                      : "border-border bg-card text-foreground hover:border-primary/40"
+                      ? "border-primary/40 bg-primary/10 text-primary"
+                      : "border-border bg-card text-foreground hover:border-primary/25"
                   }`}
                 >
-                  <p className="text-xl font-semibold">{l.label}</p>
-                  <p className="text-xs text-muted-foreground mt-1">{l.sub}</p>
-                </motion.button>
+                  <p className="text-lg font-semibold">{l.label}</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">{l.sub}</p>
+                </button>
               ))}
             </div>
           </motion.div>
         )}
 
+        {/* Call controls */}
         {status !== "choosing" && (
-          <div className="flex items-center gap-4 mt-2">
+          <div className="flex items-center gap-4 mt-3">
             {!callActive ? (
-              <motion.button
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.9 }}
+              <button
                 onClick={startCall}
-                className="w-20 h-20 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-divine transition-opacity hover:opacity-90"
+                className="w-16 h-16 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-divine hover:shadow-[0_4px_32px_-4px_hsl(var(--primary)/0.35)] transition-all duration-200"
               >
-                <Phone size={32} />
-              </motion.button>
+                <Phone size={26} />
+              </button>
             ) : (
               <>
                 {status === "listening" && (
-                  <motion.button
-                    whileTap={{ scale: 0.95 }}
+                  <button
                     onClick={stopListening}
-                    className="px-5 py-3 rounded-xl bg-secondary text-secondary-foreground font-body text-sm border border-border flex items-center gap-2"
+                    className="px-4 py-2.5 rounded-xl bg-secondary text-secondary-foreground font-body text-sm border border-border flex items-center gap-2 hover:bg-secondary/80 transition-colors"
                   >
-                    <MicOff size={16} />
-                    {chatLang === "hi" ? "बोल चुका/चुकी" : "Done Speaking"}
-                  </motion.button>
+                    <MicOff size={15} />
+                    {chatLang === "hi" ? "बोल चुका/चुकी" : "Done"}
+                  </button>
                 )}
 
-                <motion.button
-                  whileHover={{ scale: 1.1 }}
-                  whileTap={{ scale: 0.9 }}
+                <button
                   onClick={() => { endCall(); onEnd(); }}
-                  className="w-20 h-20 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center shadow-lg transition-opacity hover:opacity-90"
+                  className="w-16 h-16 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center shadow-lg hover:opacity-90 transition-opacity"
                 >
-                  <PhoneOff size={32} />
-                </motion.button>
+                  <PhoneOff size={26} />
+                </button>
               </>
             )}
           </div>
         )}
 
+        {/* Back link */}
         {!callActive && (
-          <motion.button
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
+          <button
             onClick={onEnd}
-            className="text-sm font-body text-muted-foreground hover:text-foreground transition-colors"
+            className="mt-4 text-[13px] font-body text-muted-foreground hover:text-foreground transition-colors"
           >
             ← Back to home
-          </motion.button>
+          </button>
         )}
       </div>
     </motion.div>
