@@ -12,6 +12,7 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      <DisclaimerDialog />
       <AnimatePresence mode="wait">
         {view === "chat" ? (
           <ChatInterface key="chat" onBack={() => setView("hero")} />
