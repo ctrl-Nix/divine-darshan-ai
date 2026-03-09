@@ -1,203 +1,128 @@
 import { motion } from "framer-motion";
-import { MessageCircle, Sparkles, BookOpen, Heart, Phone } from "lucide-react";
+import { MessageCircle, Phone, ArrowRight } from "lucide-react";
 import krishnaImg from "@/assets/krishna-mahabharat.png";
 
-const floatingIcons = [
-  { icon: "🪷", x: "10%", y: "20%", delay: 0, duration: 7 },
-  { icon: "🕉️", x: "85%", y: "15%", delay: 1.2, duration: 8 },
-  { icon: "🦚", x: "75%", y: "75%", delay: 0.5, duration: 6 },
-  { icon: "🪈", x: "15%", y: "80%", delay: 2, duration: 9 },
-  { icon: "✨", x: "50%", y: "10%", delay: 0.8, duration: 5 },
-];
-
-const HeroSection = ({ onStartChat, onStartCall }: { onStartChat: () => void; onStartCall: () => void }) => {
+const HeroSection = ({
+  onStartChat,
+  onStartCall,
+}: {
+  onStartChat: () => void;
+  onStartCall: () => void;
+}) => {
   return (
     <section className="relative min-h-screen flex items-center justify-center overflow-hidden bg-gradient-cosmic">
-      {/* Ambient glow effects */}
-      <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 rounded-full bg-primary/8 blur-[120px] glow-pulse" />
-        <div className="absolute bottom-1/4 right-1/4 w-80 h-80 rounded-full bg-peacock/8 blur-[100px] glow-pulse" style={{ animationDelay: "1.5s" }} />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full bg-saffron/3 blur-[200px] glow-pulse" style={{ animationDelay: "3s" }} />
-      </div>
+      {/* Single ambient glow — restrained */}
+      <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[480px] h-[480px] rounded-full bg-primary/[0.04] blur-[120px] pointer-events-none" />
 
-      {/* Floating icons */}
-      {floatingIcons.map((item, i) => (
+      <div className="relative z-10 flex flex-col items-center px-6 py-20 max-w-xl w-full">
+        {/* Krishna avatar */}
         <motion.div
-          key={i}
-          className="absolute text-2xl md:text-3xl pointer-events-none opacity-20"
-          style={{ left: item.x, top: item.y }}
-          animate={{
-            y: [0, -20, 0],
-            rotate: [0, 10, -10, 0],
-            opacity: [0.15, 0.3, 0.15],
-          }}
-          transition={{
-            duration: item.duration,
-            repeat: Infinity,
-            delay: item.delay,
-            ease: "easeInOut",
-          }}
+          initial={{ opacity: 0, scale: 0.85 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
+          className="relative mb-10"
         >
-          {item.icon}
+          <div className="w-36 h-36 md:w-44 md:h-44 rounded-full overflow-hidden border border-primary/25 shadow-divine">
+            <img
+              src={krishnaImg}
+              alt="Krishna — compassionate gaze"
+              className="w-full h-full object-cover"
+              loading="eager"
+            />
+          </div>
+
+          {/* Subtle rotating ring */}
+          <motion.div
+            className="absolute -inset-3 rounded-full border border-primary/10"
+            animate={{ rotate: 360 }}
+            transition={{ duration: 40, repeat: Infinity, ease: "linear" }}
+          />
         </motion.div>
-      ))}
 
-      <div className="container mx-auto px-6 relative z-10">
-        <div className="flex flex-col items-center gap-10 lg:gap-14">
-          {/* Krishna Image with rings */}
-          <motion.div
-            initial={{ opacity: 0, scale: 0.6, rotate: -5 }}
-            animate={{ opacity: 1, scale: 1, rotate: 0 }}
-            transition={{ duration: 1.4, ease: [0.16, 1, 0.3, 1] }}
-            className="relative float-gentle"
+        {/* Typography */}
+        <motion.div
+          initial={{ opacity: 0, y: 24 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.7, delay: 0.25 }}
+          className="text-center mb-12"
+        >
+          <p className="text-primary/70 font-body text-[11px] tracking-[0.35em] uppercase mb-4">
+            ॐ श्री कृष्णाय नमः
+          </p>
+
+          <h1 className="font-display text-5xl md:text-6xl lg:text-7xl font-normal mb-5 leading-[1.1]">
+            <span className="shimmer-text">Gita AI</span>
+          </h1>
+
+          <p className="text-foreground/70 font-body text-base md:text-lg leading-relaxed max-w-md mx-auto mb-2">
+            Verse-grounded guidance from the Bhagavad Gita, in Hindi or English.
+          </p>
+          <p className="text-muted-foreground font-body text-sm max-w-sm mx-auto">
+            An AI messenger — not Lord Krishna — sharing His teachings with devotion.
+          </p>
+        </motion.div>
+
+        {/* CTAs */}
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.5 }}
+          className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto mb-16"
+        >
+          <button
+            onClick={onStartChat}
+            className="group flex items-center justify-center gap-2.5 px-7 py-3.5 rounded-xl bg-gradient-divine font-body text-sm font-semibold text-primary-foreground shadow-divine hover:shadow-[0_4px_32px_-4px_hsl(var(--primary)/0.35)] transition-all duration-300"
           >
-            <motion.div
-              className="absolute -inset-4 rounded-full border border-primary/20"
-              animate={{ rotate: 360 }}
-              transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
-            />
-            <motion.div
-              className="absolute -inset-8 rounded-full border border-peacock/10"
-              animate={{ rotate: -360 }}
-              transition={{ duration: 30, repeat: Infinity, ease: "linear" }}
-            />
+            <MessageCircle size={17} />
+            Start Conversation
+            <ArrowRight size={15} className="opacity-0 -ml-2 group-hover:opacity-100 group-hover:ml-0 transition-all duration-300" />
+          </button>
 
-            <div className="w-48 h-48 md:w-64 md:h-64 lg:w-72 lg:h-72 rounded-full overflow-hidden shadow-glow border-2 border-primary/40 relative">
-              <img
-                src={krishnaImg}
-                alt="Lord Krishna looking directly at you with a compassionate expression"
-                className="w-full h-full object-cover"
-                loading="lazy"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-primary/20 to-transparent" />
+          <button
+            onClick={onStartCall}
+            className="flex items-center justify-center gap-2.5 px-7 py-3.5 rounded-xl border border-border bg-card text-foreground/90 font-body text-sm font-medium hover:border-primary/30 hover:bg-card/80 transition-all duration-300"
+          >
+            <Phone size={17} />
+            Voice Call
+          </button>
+        </motion.div>
+
+        {/* Stats row */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.8 }}
+          className="flex items-center gap-8 md:gap-12"
+        >
+          {[
+            { value: "18", label: "Chapters" },
+            { value: "700", label: "Shlokas" },
+            { value: "∞", label: "Wisdom" },
+          ].map((stat, i) => (
+            <div key={stat.label} className="text-center">
+              <p className="text-xl md:text-2xl font-display text-primary">{stat.value}</p>
+              <p className="text-[10px] text-muted-foreground font-body uppercase tracking-[0.2em] mt-0.5">
+                {stat.label}
+              </p>
+              {i < 2 && (
+                <span className="hidden" /> // dividers handled by gap
+              )}
             </div>
+          ))}
+        </motion.div>
 
-            <motion.div
-              className="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-card border border-primary/30 rounded-full px-4 py-1.5 flex items-center gap-1.5 shadow-divine"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 1.2 }}
-            >
-              <Sparkles size={14} className="text-primary" />
-              <span className="text-xs font-body text-primary font-medium">Krishna's Messenger</span>
-            </motion.div>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 40 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.4 }}
-            className="text-center max-w-2xl"
-          >
-            <motion.p
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.6 }}
-              className="text-peacock font-body text-sm tracking-[0.3em] uppercase mb-3"
-            >
-              ॐ श्री कृष्णाय नमः
-            </motion.p>
-
-            <h1 className="font-display text-5xl md:text-7xl lg:text-8xl font-bold mb-5 leading-tight">
-              <span className="shimmer-text">Gita AI</span>
-            </h1>
-
-            <motion.p
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.8 }}
-              className="text-foreground/80 font-body text-lg md:text-xl mb-3 leading-relaxed"
-            >
-              Real chat guidance from Bhagavad Gita — in Hindi or English.
-            </motion.p>
-            <motion.p
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.9 }}
-              className="text-muted-foreground font-body text-base mb-4"
-            >
-              I am not Lord Krishna — I am an AI messenger made by His devotee, sharing Gita teachings within my limits.
-            </motion.p>
-            <motion.p
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 1.0 }}
-              className="text-muted-foreground/90 font-body text-sm mb-10"
-            >
-              If you cannot read the Gita right now, ask here and receive direct verse-based guidance. Radhe Radhe 🙏
-            </motion.p>
-
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <motion.button
-                whileHover={{ scale: 1.05, boxShadow: "0 0 40px hsl(36 90% 55% / 0.4)" }}
-                whileTap={{ scale: 0.95 }}
-                onClick={onStartChat}
-                className="group px-8 py-4 rounded-2xl bg-gradient-divine font-body font-semibold text-primary-foreground shadow-divine transition-all duration-500 flex items-center gap-3 justify-center"
-              >
-                <MessageCircle size={20} className="group-hover:rotate-12 transition-transform" />
-                Start Conversation
-              </motion.button>
-
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={onStartCall}
-                className="group px-8 py-4 rounded-2xl border border-border bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-all duration-300 flex items-center gap-3 justify-center"
-              >
-                <Phone size={20} className="group-hover:animate-pulse" />
-                🎙️ Call Gita Guide
-              </motion.button>
-            </div>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 1.2 }}
-            className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-2xl w-full mt-4"
-          >
-            {[
-              { icon: BookOpen, title: "700+ Shlokas", desc: "All 18 chapters of wisdom" },
-              { icon: Heart, title: "Personal Guidance", desc: "Chat like a real friend" },
-              { icon: Sparkles, title: "Voice Enabled", desc: "Hindi + English voice mode" },
-            ].map((feature, i) => (
-              <motion.div
-                key={feature.title}
-                whileHover={{ y: -4, borderColor: "hsl(36 90% 55% / 0.4)" }}
-                className="bg-card/60 backdrop-blur-sm border border-border rounded-2xl p-5 text-center transition-all duration-300 cursor-default"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 1.4 + i * 0.15 }}
-              >
-                <feature.icon size={24} className="text-primary mx-auto mb-2" />
-                <p className="font-body font-semibold text-foreground text-sm">{feature.title}</p>
-                <p className="font-body text-muted-foreground text-xs mt-1">{feature.desc}</p>
-              </motion.div>
-            ))}
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 1.8 }}
-            className="flex gap-10 justify-center"
-          >
-            {[
-              { num: "18", label: "Chapters" },
-              { num: "700", label: "Shlokas" },
-              { num: "∞", label: "Wisdom" },
-            ].map((stat) => (
-              <div key={stat.label} className="text-center">
-                <p className="text-2xl md:text-3xl font-display font-bold text-primary">{stat.num}</p>
-                <p className="text-xs text-muted-foreground font-body uppercase tracking-wider">{stat.label}</p>
-              </div>
-            ))}
-          </motion.div>
-        </div>
+        {/* Footer credit */}
+        <motion.p
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 1.2 }}
+          className="mt-16 text-muted-foreground/40 font-body text-[11px] tracking-wide"
+        >
+          Radhe Radhe 🙏
+        </motion.p>
       </div>
     </section>
   );
 };
 
 export default HeroSection;
-
