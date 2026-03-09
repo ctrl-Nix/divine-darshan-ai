@@ -3,6 +3,7 @@ import { AnimatePresence } from "framer-motion";
 import HeroSection from "@/components/HeroSection";
 import ChatInterface from "@/components/ChatInterface";
 import VoiceCallInterface from "@/components/VoiceCallInterface";
+import DisclaimerDialog from "@/components/DisclaimerDialog";
 
 type View = "hero" | "chat" | "call";
 
