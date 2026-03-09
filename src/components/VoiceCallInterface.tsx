@@ -53,6 +53,7 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
     if (!cleanedText) return;
 
     // Try Sarvam TTS first
+    let sarvamPlayFailed = false;
     try {
       const { data, error } = await supabase.functions.invoke("sarvam-tts", {
         body: { text: cleanedText, language_code: voiceLang },
@@ -67,11 +68,14 @@ const VoiceCallInterface = ({ onEnd }: { onEnd: () => void }) => {
         const audio = new Audio(url);
         audio.setAttribute("playsinline", "true");
         audioRef.current = audio;
-        return new Promise<void>((resolve) => {
-          audio.onended = () => { URL.revokeObjectURL(url); audioRef.current = null; resolve(); };
-          audio.onerror = () => { URL.revokeObjectURL(url); audioRef.current = null; resolve(); };
-          audio.play().catch(() => { URL.revokeObjectURL(url); audioRef.current = null; resolve(); });
+        const played = await new Promise<boolean>((resolve) => {
+          audio.onended = () => { URL.revokeObjectURL(url); audioRef.current = null; resolve(true); };
+          audio.onerror = () => { URL.revokeObjectURL(url); audioRef.current = null; resolve(false); };
+          audio.play().catch(() => { URL.revokeObjectURL(url); audioRef.current = null; resolve(false); });
         });
+        if (played) return; // Sarvam audio played successfully
+        sarvamPlayFailed = true;
+        console.warn("Sarvam audio play blocked (likely iOS), falling back to browser TTS");
       }
     } catch (e) {
       console.warn("Sarvam TTS failed, falling back to browser TTS", e);
