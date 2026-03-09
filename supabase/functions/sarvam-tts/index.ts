@@ -12,6 +12,33 @@ serve(async (req) => {
     const { text, language_code } = await req.json();
     const speaker = language_code === "en-IN" ? "vidya" : "manisha";
 
+    const rawText = typeof text === "string" ? text : "";
+    const normalizedText = rawText.replace(/\s+/g, " ").trim();
+    if (!normalizedText) {
+      return new Response(JSON.stringify({ error: "Text is required" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const MAX_INPUT_CHARS = 450;
+    const inputs: string[] = [];
+    let cursor = 0;
+
+    while (cursor < normalizedText.length) {
+      let end = Math.min(cursor + MAX_INPUT_CHARS, normalizedText.length);
+
+      if (end < normalizedText.length) {
+        const window = normalizedText.slice(cursor, end);
+        const splitAt = Math.max(window.lastIndexOf(". "), window.lastIndexOf("? "), window.lastIndexOf("! "), window.lastIndexOf(" "));
+        if (splitAt > 120) end = cursor + splitAt + 1;
+      }
+
+      const chunk = normalizedText.slice(cursor, end).trim();
+      if (chunk) inputs.push(chunk);
+      cursor = end;
+    }
+
     const apiKey = Deno.env.get("SARVAM_API_KEY");
     if (!apiKey) {
       return new Response(JSON.stringify({ error: "SARVAM_API_KEY not configured" }), {
@@ -27,7 +54,7 @@ serve(async (req) => {
         "api-subscription-key": apiKey,
       },
       body: JSON.stringify({
-        inputs: [text],
+        inputs,
         target_language_code: language_code ?? "hi-IN",
         speaker,
         model: "bulbul:v2",
@@ -44,7 +71,10 @@ serve(async (req) => {
 
     const json = await res.json();
 
-    return new Response(JSON.stringify({ audio: json.audios?.[0] }), {
+    return new Response(JSON.stringify({
+      audio: json.audios?.[0] ?? null,
+      audios: Array.isArray(json.audios) ? json.audios : [],
+    }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
