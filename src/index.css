@@ -1,11 +1,67 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
-  :root {
+  /* ─── Light Theme (Default) ─── */
+  :root, .light {
+    --background: 40 33% 97%;
+    --foreground: 220 15% 18%;
+
+    --card: 40 30% 95%;
+    --card-foreground: 220 15% 18%;
+
+    --popover: 40 30% 95%;
+    --popover-foreground: 220 15% 18%;
+
+    --primary: 28 85% 52%;
+    --primary-foreground: 40 33% 97%;
+
+    --secondary: 35 20% 90%;
+    --secondary-foreground: 220 12% 30%;
+
+    --muted: 35 15% 88%;
+    --muted-foreground: 220 10% 50%;
+
+    --accent: 168 45% 38%;
+    --accent-foreground: 40 33% 97%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 35 18% 82%;
+    --input: 35 18% 86%;
+    --ring: 28 85% 52%;
+
+    --radius: 0.75rem;
+
+    --saffron: 28 85% 52%;
+    --saffron-glow: 38 90% 62%;
+    --peacock: 168 45% 38%;
+    --peacock-light: 168 40% 50%;
+    --divine-gold: 45 80% 52%;
+    --lotus-pink: 340 55% 52%;
+
+    --font-display: 'Playfair Display', serif;
+    --font-body: 'Inter', sans-serif;
+
+    --sidebar-background: 40 28% 94%;
+    --sidebar-foreground: 220 12% 25%;
+    --sidebar-primary: 28 85% 52%;
+    --sidebar-primary-foreground: 40 33% 97%;
+    --sidebar-accent: 35 20% 88%;
+    --sidebar-accent-foreground: 220 12% 30%;
+    --sidebar-border: 35 18% 82%;
+    --sidebar-ring: 28 85% 52%;
+
+    --glass-bg: rgba(255, 253, 245, 0.6);
+    --glass-border: rgba(255, 153, 51, 0.15);
+  }
+
+  /* ─── Dark Theme ─── */
+  .dark {
     --background: 240 12% 5%;
     --foreground: 38 25% 92%;
 
@@ -15,7 +71,7 @@
     --popover: 240 10% 9%;
     --popover-foreground: 38 25% 92%;
 
-    --primary: 38 75% 55%;
+    --primary: 28 85% 52%;
     --primary-foreground: 240 12% 5%;
 
     --secondary: 240 8% 14%;
@@ -32,9 +88,7 @@
 
     --border: 240 8% 16%;
     --input: 240 8% 14%;
-    --ring: 38 75% 55%;
-
-    --radius: 0.75rem;
+    --ring: 28 85% 52%;
 
     --saffron: 28 85% 52%;
     --saffron-glow: 38 90% 62%;
@@ -43,17 +97,38 @@
     --divine-gold: 45 80% 58%;
     --lotus-pink: 340 55% 52%;
 
-    --font-display: 'DM Serif Display', serif;
+    --font-display: 'Playfair Display', serif;
     --font-body: 'Inter', sans-serif;
 
     --sidebar-background: 240 10% 7%;
     --sidebar-foreground: 38 20% 88%;
-    --sidebar-primary: 38 75% 55%;
+    --sidebar-primary: 28 85% 52%;
     --sidebar-primary-foreground: 240 12% 5%;
     --sidebar-accent: 240 8% 14%;
     --sidebar-accent-foreground: 38 20% 88%;
     --sidebar-border: 240 8% 16%;
-    --sidebar-ring: 38 75% 55%;
+    --sidebar-ring: 28 85% 52%;
+
+    --glass-bg: rgba(15, 15, 25, 0.6);
+    --glass-border: rgba(255, 153, 51, 0.12);
+  }
+
+  /* ─── High Contrast Override ─── */
+  .high-contrast {
+    --foreground: 0 0% 0%;
+    --background: 0 0% 100%;
+    --card: 0 0% 97%;
+    --card-foreground: 0 0% 0%;
+    --muted-foreground: 0 0% 20%;
+    --border: 0 0% 40%;
+  }
+  .high-contrast.dark {
+    --foreground: 0 0% 100%;
+    --background: 0 0% 3%;
+    --card: 0 0% 8%;
+    --card-foreground: 0 0% 100%;
+    --muted-foreground: 0 0% 75%;
+    --border: 0 0% 50%;
   }
 }
 
@@ -65,6 +140,7 @@
   body {
     @apply bg-background text-foreground antialiased;
     font-family: var(--font-body);
+    transition: background-color 0.4s ease, color 0.3s ease;
   }
 
   h1, h2, h3, h4, h5, h6 {
@@ -81,11 +157,11 @@
   }
 
   .bg-gradient-divine {
-    background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--saffron)));
+    background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--saffron-glow)));
   }
 
   .bg-gradient-cosmic {
-    background: radial-gradient(ellipse at 50% 0%, hsl(240 12% 10%) 0%, hsl(240 12% 5%) 70%);
+    background: radial-gradient(ellipse at 50% 0%, hsl(var(--muted)) 0%, hsl(var(--background)) 70%);
   }
 
   .shadow-divine {
@@ -94,6 +170,22 @@
 
   .shadow-glow {
     box-shadow: 0 0 40px hsl(var(--primary) / 0.12), 0 0 80px hsl(var(--peacock) / 0.06);
+  }
+
+  /* Glassmorphism utility */
+  .glass {
+    background: var(--glass-bg);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--glass-border);
+  }
+
+  .glass-strong {
+    background: var(--glass-bg);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid var(--glass-border);
+    box-shadow: 0 8px 32px hsl(var(--primary) / 0.06);
   }
 }
 
@@ -117,6 +209,49 @@
   animation: shimmer 4s ease-in-out infinite;
 }
 
+/* Shloka card idle glow */
+@keyframes shlokaGlow {
+  0%, 100% { box-shadow: 0 0 12px hsl(var(--primary) / 0.08); }
+  50% { box-shadow: 0 0 24px hsl(var(--primary) / 0.16), 0 0 40px hsl(var(--divine-gold) / 0.06); }
+}
+
+.shloka-glow {
+  animation: shlokaGlow 3s ease-in-out infinite;
+}
+
+/* Fluid gradient background */
+@keyframes fluidGradient {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.bg-fluid-gradient {
+  background: linear-gradient(
+    -45deg,
+    hsl(var(--background)),
+    hsl(35 30% 94%),
+    hsl(28 40% 92%),
+    hsl(340 20% 93%),
+    hsl(var(--background))
+  );
+  background-size: 400% 400%;
+  animation: fluidGradient 20s ease infinite;
+}
+
+.dark .bg-fluid-gradient {
+  background: linear-gradient(
+    -45deg,
+    hsl(240 12% 5%),
+    hsl(240 15% 8%),
+    hsl(270 12% 8%),
+    hsl(220 15% 7%),
+    hsl(240 12% 5%)
+  );
+  background-size: 400% 400%;
+  animation: fluidGradient 20s ease infinite;
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar {
   width: 5px;
@@ -125,7 +260,7 @@
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: hsl(240 8% 22%);
+  background: hsl(var(--muted-foreground) / 0.3);
   border-radius: 10px;
 }
 ::-webkit-scrollbar-thumb:hover {
