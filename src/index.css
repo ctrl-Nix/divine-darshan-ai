@@ -219,6 +219,53 @@
   animation: shlokaGlow 3s ease-in-out infinite;
 }
 
+/* Parchment background */
+.parchment-bg {
+  background: linear-gradient(
+    135deg,
+    hsl(var(--primary) / 0.04),
+    hsl(var(--divine-gold) / 0.06),
+    hsl(var(--primary) / 0.03)
+  );
+}
+
+.dark .parchment-bg {
+  background: linear-gradient(
+    135deg,
+    hsl(var(--primary) / 0.06),
+    hsl(var(--divine-gold) / 0.04),
+    hsl(var(--primary) / 0.03)
+  );
+}
+
+/* Diya flame flicker */
+@keyframes diyaFlicker {
+  0%, 100% { transform: scaleY(1) scaleX(1); opacity: 1; }
+  20% { transform: scaleY(1.05) scaleX(0.97); opacity: 0.9; }
+  40% { transform: scaleY(0.95) scaleX(1.03); opacity: 1; }
+  60% { transform: scaleY(1.08) scaleX(0.95); opacity: 0.85; }
+  80% { transform: scaleY(0.98) scaleX(1.02); opacity: 0.95; }
+}
+
+@keyframes diyaGlow {
+  0%, 100% { opacity: 0.3; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(1.2); }
+}
+
+.diya-flame {
+  transform-origin: bottom center;
+  animation: diyaFlicker 1.5s ease-in-out infinite;
+}
+
+.diya-flame-inner {
+  transform-origin: bottom center;
+  animation: diyaFlicker 1.2s ease-in-out infinite reverse;
+}
+
+.diya-glow {
+  animation: diyaGlow 2s ease-in-out infinite;
+}
+
 /* Fluid gradient background */
 @keyframes fluidGradient {
   0% { background-position: 0% 50%; }

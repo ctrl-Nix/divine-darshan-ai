@@ -1,9 +1,12 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, ArrowLeft, Globe } from "lucide-react";
+import { Send, ArrowLeft } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { toast } from "sonner";
 import VoiceButton from "./VoiceButton";
+import DhwajaBanner from "./DhwajaBanner";
+import DiyaIcon from "./DiyaIcon";
+import WisdomLogic from "./WisdomLogic";
 
 type Message = {
   id: string;
@@ -33,6 +36,11 @@ const SUGGESTIONS: Record<ChatLang, string[]> = {
 const WELCOME: Record<ChatLang, string> = {
   en: `🙏 **Jai Shri Krishna**\n\nI'll share guidance from the Bhagavad Gita — verse by verse, for whatever weighs on your heart.\n\nTell me what's on your mind. **Radhe Radhe 🙏**`,
   hi: `🙏 **जय श्री कृष्ण**\n\nमैं भगवद् गीता से — श्लोक दर श्लोक — आपके मन की हर चिंता का मार्गदर्शन दूँगा।\n\nबताइए, क्या चल रहा है मन में? **राधे राधे 🙏**`,
+};
+
+const HUMBLE_CLOSING: Record<ChatLang, string> = {
+  en: "\n\n---\n\n🙏 *This is a digital synthesis. For deeper spiritual matters, nothing replaces the warmth of a human mentor.*",
+  hi: "\n\n---\n\n🙏 *यह एक डिजिटल मार्गदर्शन है। गहन आध्यात्मिक विषयों के लिए, किसी मानव गुरु की गर्मजोशी का कोई विकल्प नहीं।*",
 };
 
 async function streamChat({
@@ -100,6 +108,8 @@ async function streamChat({
   onDone();
 }
 
+const spring = { type: "spring" as const, stiffness: 200, damping: 24 };
+
 const ChatInterface = ({ onBack }: { onBack: () => void }) => {
   const [chatLang, setChatLang] = useState<ChatLang>("en");
   const [messages, setMessages] = useState<Message[]>([
@@ -110,6 +120,11 @@ const ChatInterface = ({ onBack }: { onBack: () => void }) => {
   const [showSuggestions, setShowSuggestions] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Count user-assistant exchanges (pairs)
+  const exchangeCount = useMemo(() => {
+    return messages.filter((m) => m.role === "user").length;
+  }, [messages]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -145,6 +160,10 @@ const ChatInterface = ({ onBack }: { onBack: () => void }) => {
 
       let assistantSoFar = "";
 
+      // Check if we should append humble closing (after 5 exchanges)
+      const currentExchanges = newMessages.filter((m) => m.role === "user").length;
+      const shouldAddClosing = currentExchanges >= 5 && currentExchanges % 3 === 0;
+
       const upsertAssistant = (chunk: string) => {
         assistantSoFar += chunk;
         setMessages((prev) => {
@@ -166,7 +185,15 @@ const ChatInterface = ({ onBack }: { onBack: () => void }) => {
           onDone: () => {
             setIsLoading(false);
             setMessages((prev) =>
-              prev.map((m) => (m.id === "streaming" ? { ...m, id: Date.now().toString() } : m)),
+              prev.map((m) => {
+                if (m.id === "streaming") {
+                  const finalContent = shouldAddClosing
+                    ? m.content + HUMBLE_CLOSING[chatLang]
+                    : m.content;
+                  return { ...m, id: Date.now().toString(), content: finalContent };
+                }
+                return m;
+              }),
             );
           },
         });
@@ -204,13 +231,14 @@ const ChatInterface = ({ onBack }: { onBack: () => void }) => {
       className="flex flex-col h-screen bg-background"
     >
       {/* Header */}
-      <header className="flex items-center gap-3 px-4 md:px-6 py-3 border-b border-border bg-card/60 backdrop-blur-xl">
-        <button
+      <header className="flex items-center gap-3 px-4 md:px-6 py-3 border-b border-border glass">
+        <motion.button
+          whileTap={{ scale: 0.9 }}
           onClick={onBack}
           className="p-2 -ml-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
         >
           <ArrowLeft size={18} />
-        </button>
+        </motion.button>
 
         <div className="w-9 h-9 rounded-full bg-gradient-divine flex items-center justify-center shadow-divine flex-shrink-0">
           <span className="text-base">🙏</span>
@@ -226,8 +254,9 @@ const ChatInterface = ({ onBack }: { onBack: () => void }) => {
         {/* Language toggle */}
         <div className="flex items-center gap-0.5 rounded-lg border border-border bg-muted p-0.5">
           {(["en", "hi"] as const).map((lang) => (
-            <button
+            <motion.button
               key={lang}
+              whileTap={{ scale: 0.92 }}
               onClick={() => switchLanguage(lang)}
               disabled={isLoading}
               className={`px-2.5 py-1 rounded-md text-[11px] font-body font-medium transition-all duration-200 ${
@@ -237,10 +266,13 @@ const ChatInterface = ({ onBack }: { onBack: () => void }) => {
               }`}
             >
               {lang === "en" ? "EN" : "हिं"}
-            </button>
+            </motion.button>
           ))}
         </div>
       </header>
+
+      {/* Dhwaja Banner — unfurls once */}
+      <DhwajaBanner />
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 md:px-6 py-5 space-y-4">
@@ -248,39 +280,58 @@ const ChatInterface = ({ onBack }: { onBack: () => void }) => {
           {messages.map((msg) => (
             <motion.div
               key={msg.id}
-              initial={{ opacity: 0, y: 8 }}
+              initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.25 }}
+              transition={spring}
               className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
             >
               {msg.role === "assistant" && (
-                <div className="w-7 h-7 rounded-full bg-gradient-divine flex items-center justify-center mr-2.5 mt-1 flex-shrink-0">
-                  <span className="text-xs">🙏</span>
+                <div className="flex flex-col items-center gap-1 mr-2.5 mt-1 flex-shrink-0">
+                  <div className="w-7 h-7 rounded-full bg-gradient-divine flex items-center justify-center">
+                    <span className="text-xs">🙏</span>
+                  </div>
+                  {/* Diya icon — only on non-welcome messages */}
+                  {msg.id !== "welcome" && msg.id !== "streaming" && (
+                    <DiyaIcon />
+                  )}
                 </div>
               )}
 
-              <div
-                className={`max-w-[82%] md:max-w-[65%] px-4 py-3 font-body text-[14px] leading-[1.7] ${
-                  msg.role === "user"
-                    ? "bg-primary/15 text-foreground rounded-2xl rounded-br-lg border border-primary/15"
-                    : "bg-card text-card-foreground rounded-2xl rounded-bl-lg border border-border"
-                }`}
-              >
-                <ReactMarkdown
-                  components={{
-                    blockquote: ({ children }) => (
-                      <blockquote className="border-l-2 border-primary/40 pl-3 my-2 italic text-foreground/80 text-[13px]">
-                        {children}
-                      </blockquote>
-                    ),
-                    strong: ({ children }) => (
-                      <strong className="text-primary font-semibold">{children}</strong>
-                    ),
-                    p: ({ children }) => <p className="mb-1.5 last:mb-0">{children}</p>,
-                  }}
+              <div className="max-w-[82%] md:max-w-[65%]">
+                <div
+                  className={`px-4 py-3 font-body text-[14px] leading-[1.7] ${
+                    msg.role === "user"
+                      ? "glass rounded-2xl rounded-br-lg border-primary/15"
+                      : "glass rounded-2xl rounded-bl-lg shloka-glow"
+                  }`}
                 >
-                  {msg.content}
-                </ReactMarkdown>
+                  <ReactMarkdown
+                    components={{
+                      blockquote: ({ children }) => (
+                        <blockquote className="border-l-2 border-primary/40 pl-3 my-2 font-display italic text-foreground/80 text-[13px]">
+                          {children}
+                        </blockquote>
+                      ),
+                      strong: ({ children }) => (
+                        <strong className="text-primary font-semibold">{children}</strong>
+                      ),
+                      p: ({ children }) => <p className="mb-1.5 last:mb-0">{children}</p>,
+                      hr: () => (
+                        <hr className="my-3 border-border/50" />
+                      ),
+                      em: ({ children }) => (
+                        <em className="text-foreground/70 font-body">{children}</em>
+                      ),
+                    }}
+                  >
+                    {msg.content}
+                  </ReactMarkdown>
+                </div>
+
+                {/* Wisdom Logic — verse ref + concept, only for completed AI messages */}
+                {msg.role === "assistant" && msg.id !== "welcome" && msg.id !== "streaming" && (
+                  <WisdomLogic content={msg.content} />
+                )}
               </div>
             </motion.div>
           ))}
@@ -289,19 +340,20 @@ const ChatInterface = ({ onBack }: { onBack: () => void }) => {
         {/* Suggestions */}
         {showSuggestions && messages.length === 1 && (
           <motion.div
-            initial={{ opacity: 0, y: 8 }}
+            initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
+            transition={{ ...spring, delay: 0.3 }}
             className="flex flex-wrap gap-2 justify-center pt-3"
           >
             {SUGGESTIONS[chatLang].map((s) => (
-              <button
+              <motion.button
                 key={s}
+                whileTap={{ scale: 0.95 }}
                 onClick={() => sendMessage(s)}
-                className="px-3.5 py-2 rounded-xl border border-border bg-card text-[13px] font-body text-foreground/70 hover:border-primary/30 hover:text-foreground hover:bg-card/80 transition-all duration-200"
+                className="px-3.5 py-2 rounded-xl glass text-[13px] font-body text-foreground/70 hover:border-primary/30 hover:text-foreground transition-all duration-200"
               >
                 {s}
-              </button>
+              </motion.button>
             ))}
           </motion.div>
         )}
@@ -316,7 +368,7 @@ const ChatInterface = ({ onBack }: { onBack: () => void }) => {
             <div className="w-7 h-7 rounded-full bg-gradient-divine flex items-center justify-center mr-2.5 flex-shrink-0">
               <span className="text-xs">🙏</span>
             </div>
-            <div className="bg-card border border-border rounded-2xl rounded-bl-lg px-4 py-3 flex gap-1">
+            <div className="glass rounded-2xl rounded-bl-lg px-4 py-3 flex gap-1">
               {[0, 1, 2].map((i) => (
                 <div
                   key={i}
@@ -332,7 +384,7 @@ const ChatInterface = ({ onBack }: { onBack: () => void }) => {
       </div>
 
       {/* Input area */}
-      <div className="px-4 md:px-6 py-3 border-t border-border bg-card/40 backdrop-blur-xl">
+      <div className="px-4 md:px-6 py-3 border-t border-border glass">
         <div className="flex items-center gap-2 max-w-3xl mx-auto">
           <VoiceButton onResult={handleVoiceResult} languageCode={voiceLang} />
 
@@ -343,17 +395,18 @@ const ChatInterface = ({ onBack }: { onBack: () => void }) => {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleSend()}
               placeholder={chatLang === "hi" ? "अपनी बात लिखें..." : "Share what's on your mind..."}
-              className="w-full bg-secondary border border-border rounded-xl px-4 py-2.5 font-body text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary/30 focus:border-primary/40 transition-all"
+              className="w-full bg-secondary/60 border border-border rounded-xl px-4 py-2.5 font-body text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary/30 focus:border-primary/40 transition-all"
             />
           </div>
 
-          <button
+          <motion.button
+            whileTap={{ scale: 0.9 }}
             onClick={handleSend}
             disabled={!input.trim() || isLoading}
             className="p-2.5 rounded-xl bg-gradient-divine text-primary-foreground shadow-divine disabled:opacity-30 disabled:shadow-none transition-all duration-200"
           >
             <Send size={17} />
-          </button>
+          </motion.button>
         </div>
       </div>
     </motion.div>
