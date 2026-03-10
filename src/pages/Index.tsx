@@ -4,6 +4,8 @@ import HeroSection from "@/components/HeroSection";
 import ChatInterface from "@/components/ChatInterface";
 import VoiceCallInterface from "@/components/VoiceCallInterface";
 import DisclaimerDialog from "@/components/DisclaimerDialog";
+import ParticleBackground from "@/components/ParticleBackground";
+import AccessibilityControls from "@/components/AccessibilityControls";
 
 type View = "hero" | "chat" | "call";
 
@@ -12,6 +14,8 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      <ParticleBackground />
+      <AccessibilityControls />
       <DisclaimerDialog />
       <AnimatePresence mode="wait">
         {view === "chat" ? (
