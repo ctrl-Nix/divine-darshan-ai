@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { Sun, Moon, Eye, Type } from "lucide-react";
+import { Sun, Moon, Eye } from "lucide-react";
 import { useTheme } from "@/contexts/ThemeContext";
 
 const AccessibilityControls = () => {
@@ -7,41 +7,46 @@ const AccessibilityControls = () => {
 
   const sizeLabel = textSize === "normal" ? "A" : textSize === "large" ? "A+" : "A++";
 
+  const btnBase =
+    "flex items-center justify-center w-8 h-8 rounded-full backdrop-blur-md border transition-all duration-200 active:scale-90 text-xs";
+  const btnIdle =
+    "bg-card/60 border-border/40 text-foreground/60 hover:text-foreground hover:border-primary/30 hover:bg-card/80";
+
   return (
     <motion.div
-      initial={{ opacity: 0, y: -10 }}
-      animate={{ opacity: 1, y: 0 }}
+      initial={{ opacity: 0, x: 10 }}
+      animate={{ opacity: 1, x: 0 }}
       transition={{ delay: 0.6 }}
-      className="fixed top-4 right-4 z-50 flex items-center gap-1.5"
+      className="fixed top-3 right-3 z-[60] flex items-center gap-1"
     >
       {/* Text size */}
       <button
         onClick={cycleTextSize}
-        className="group flex items-center justify-center w-9 h-9 rounded-xl bg-card/80 backdrop-blur-lg border border-border/50 text-foreground/70 hover:text-foreground hover:border-primary/30 transition-all duration-200 active:scale-90"
+        className={`${btnBase} ${btnIdle}`}
         title="Adjust text size"
         aria-label={`Text size: ${textSize}`}
       >
-        <span className="text-xs font-body font-bold">{sizeLabel}</span>
+        <span className="font-body font-bold leading-none">{sizeLabel}</span>
       </button>
 
       {/* High contrast */}
       <button
         onClick={toggleHighContrast}
-        className={`group flex items-center justify-center w-9 h-9 rounded-xl backdrop-blur-lg border transition-all duration-200 active:scale-90 ${
+        className={`${btnBase} ${
           highContrast
             ? "bg-foreground text-background border-foreground"
-            : "bg-card/80 border-border/50 text-foreground/70 hover:text-foreground hover:border-primary/30"
+            : btnIdle
         }`}
         title="Toggle high contrast"
         aria-label={`High contrast: ${highContrast ? "on" : "off"}`}
       >
-        <Eye size={15} />
+        <Eye size={13} />
       </button>
 
       {/* Theme toggle */}
       <button
         onClick={toggleTheme}
-        className="group flex items-center justify-center w-9 h-9 rounded-xl bg-card/80 backdrop-blur-lg border border-border/50 text-foreground/70 hover:text-foreground hover:border-primary/30 transition-all duration-200 active:scale-90"
+        className={`${btnBase} ${btnIdle}`}
         title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
         aria-label={`Theme: ${theme}`}
       >
@@ -51,7 +56,7 @@ const AccessibilityControls = () => {
           animate={{ rotate: 0, opacity: 1 }}
           transition={{ type: "spring", stiffness: 300, damping: 20 }}
         >
-          {theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}
+          {theme === "dark" ? <Sun size={13} /> : <Moon size={13} />}
         </motion.div>
       </button>
     </motion.div>
