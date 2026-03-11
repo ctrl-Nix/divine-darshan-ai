@@ -15,7 +15,7 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-background">
       <ParticleBackground />
-      <AccessibilityControls />
+      {view === "hero" && <AccessibilityControls />}
       <DisclaimerDialog />
       <AnimatePresence mode="wait">
         {view === "chat" ? (
