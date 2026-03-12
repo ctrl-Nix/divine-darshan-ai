@@ -104,8 +104,11 @@ const HeroSection = ({
           transition={{ ...spring, delay: 0.18 }}
           className="text-center mb-5"
         >
-          <p className="text-primary/45 font-body text-[9px] sm:text-[10px] tracking-[0.35em] uppercase mb-1.5">
-            ॐ श्री कृष्णाय नमः
+          <p className="text-primary/50 font-body text-[9px] sm:text-[10px] tracking-[0.35em] uppercase mb-1">
+            ॐ कृष्णाय वासुदेवाय हरये परमात्मने
+          </p>
+          <p className="text-primary/35 font-body text-[8px] sm:text-[9px] tracking-[0.25em] uppercase mb-2">
+            प्रणतक्लेशनाशाय गोविन्दाय नमो नमः
           </p>
           <h1 className="font-display text-3xl sm:text-4xl md:text-5xl font-normal mb-1.5 leading-[1.1]">
             <span className="shimmer-text">Gita AI</span>
