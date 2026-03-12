@@ -54,6 +54,7 @@ const HeroSection = ({
 }) => {
   const [selectedMood, setSelectedMood] = useState<string | null>(null);
   const [character, setCharacter] = useState<CharacterType>("normal");
+  const navigate = useNavigate();
 
   const handleMoodClick = (label: string) => {
     setSelectedMood(label);
