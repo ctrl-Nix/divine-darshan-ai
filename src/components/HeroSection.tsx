@@ -267,15 +267,24 @@ const HeroSection = ({
           ))}
         </motion.div>
 
-        {/* Footer */}
-        <motion.p
+        {/* Footer with Help */}
+        <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.75 }}
-          className="text-muted-foreground/35 font-body text-[9px] sm:text-[10px] tracking-wide"
+          className="flex items-center gap-3"
         >
-          Radhe Radhe 🙏
-        </motion.p>
+          <button
+            onClick={() => navigate("/help")}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl glass text-muted-foreground/60 hover:text-primary/80 hover:border-primary/20 text-[10px] sm:text-[11px] font-body transition-all duration-200"
+          >
+            <HelpCircle size={12} />
+            How to use
+          </button>
+          <span className="text-muted-foreground/30 font-body text-[9px] sm:text-[10px] tracking-wide">
+            Radhe Radhe 🙏
+          </span>
+        </motion.div>
       </div>
     </motion.section>
   );
