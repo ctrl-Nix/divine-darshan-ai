@@ -246,24 +246,33 @@ const HeroSection = ({
           </motion.button>
         </motion.div>
 
-        {/* ── Stats ── */}
+        {/* ── Stats Cards ── */}
         <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.62 }}
-          className="flex items-center gap-8 sm:gap-10 mb-6"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ ...spring, delay: 0.62 }}
+          className="flex items-stretch gap-3 sm:gap-4 mb-8"
         >
           {[
-            { value: "18", label: "Chapters" },
-            { value: "700", label: "Shlokas" },
-            { value: "∞", label: "Wisdom" },
-          ].map((stat) => (
-            <div key={stat.label} className="text-center">
-              <p className="text-base sm:text-lg font-display text-primary">{stat.value}</p>
-              <p className="text-[8px] sm:text-[9px] text-muted-foreground font-body uppercase tracking-[0.2em] mt-0.5">
+            { value: "18", label: "Chapters", gradient: "from-primary/20 to-primary/5", border: "border-primary/25", glow: "shadow-[0_0_20px_-6px_hsl(var(--primary)/0.25)]" },
+            { value: "700", label: "Shlokas", gradient: "from-accent/20 to-accent/5", border: "border-accent/25", glow: "shadow-[0_0_20px_-6px_hsl(var(--accent)/0.25)]" },
+            { value: "∞", label: "Wisdom", gradient: "from-[hsl(var(--divine-gold)/0.2)] to-[hsl(var(--divine-gold)/0.05)]", border: "border-[hsl(var(--divine-gold)/0.25)]", glow: "shadow-[0_0_20px_-6px_hsl(var(--divine-gold)/0.25)]" },
+          ].map((stat, i) => (
+            <motion.div
+              key={stat.label}
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ ...spring, delay: 0.65 + i * 0.08 }}
+              whileHover={{ scale: 1.05, y: -2 }}
+              className={`relative flex flex-col items-center justify-center px-5 sm:px-7 py-3 sm:py-4 rounded-2xl bg-gradient-to-br ${stat.gradient} border ${stat.border} ${stat.glow} backdrop-blur-sm cursor-default transition-shadow duration-300 hover:shadow-lg`}
+            >
+              <p className="text-xl sm:text-2xl font-display text-primary font-bold leading-none">
+                {stat.value}
+              </p>
+              <p className="text-[7px] sm:text-[8px] text-muted-foreground font-body uppercase tracking-[0.25em] mt-1.5">
                 {stat.label}
               </p>
-            </div>
+            </motion.div>
           ))}
         </motion.div>
 
