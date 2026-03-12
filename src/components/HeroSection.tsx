@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { MessageCircle, Phone, Sparkles, BookOpen, GraduationCap, Heart, User } from "lucide-react";
+import { MessageCircle, Phone, Sparkles, BookOpen, GraduationCap, Heart, User, HelpCircle } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import krishnaImg from "@/assets/krishna-mahabharat.png";
 
 /* ── Verse data by character type ── */
