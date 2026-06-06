@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { MessageCircle, Phone, Sparkles, BookOpen, GraduationCap, Heart, User, HelpCircle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import krishnaImg from "@/assets/krishna-mahabharat.png";
+import DiyaNav from "@/components/DiyaNav";
 
 /* ── Verse data by character type ── */
 type CharacterType = "student" | "normal" | "elder";
@@ -277,6 +278,19 @@ const HeroSection = ({
               </p>
             </motion.div>
           ))}
+        </motion.div>
+
+        {/* ── Diya Navigation Row ── */}
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ ...spring, delay: 0.7 }}
+          className="w-full mb-8"
+        >
+          <p className="text-center text-muted-foreground font-body text-[11px] sm:text-xs mb-3 tracking-wide">
+            Light a lamp · Choose your path
+          </p>
+          <DiyaNav />
         </motion.div>
 
         {/* Footer with Help */}
