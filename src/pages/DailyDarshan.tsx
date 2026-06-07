@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import PageShell from "@/components/PageShell";
 import { ChevronRight } from "lucide-react";
 
@@ -73,56 +74,35 @@ function getDayOfYear(date: Date): number {
 }
 
 const DailyDarshan = () => {
-  const [index, setIndex] = useState(() => {
-    const day = getDayOfYear(new Date());
-    return day % DARSHANS.length;
-  });
-  const [isTransitioning, setIsTransitioning] = useState(false);
-  const [displayIndex, setDisplayIndex] = useState(index);
+  const dayIndex = getDayOfYear(new Date()) % DARSHANS.length;
+  const [index, setIndex] = useState(dayIndex);
+  const [isAnimating, setIsAnimating] = useState(false);
+
+  const darshan = DARSHANS[index];
 
   const goToNext = useCallback(() => {
-    if (isTransitioning) return;
-    setIsTransitioning(true);
-    setTimeout(() => {
-      setIndex((prev) => (prev + 1) % DARSHANS.length);
-    }, 400);
-  }, [isTransitioning]);
-
-  useEffect(() => {
-    if (isTransitioning) {
-      const timer = setTimeout(() => {
-        setDisplayIndex(index);
-        setIsTransitioning(false);
-      }, 400);
-      return () => clearTimeout(timer);
-    }
-    setDisplayIndex(index);
-  }, [index, isTransitioning]);
-
-  const darshan = DARSHANS[displayIndex];
+    if (isAnimating) return;
+    setIsAnimating(true);
+    setIndex((prev) => (prev + 1) % DARSHANS.length);
+  }, [isAnimating]);
 
   return (
     <PageShell title="Daily Darshan" subtitle="A new glimpse of Krishna every sunrise">
       <div className="rounded-3xl glass-strong border border-[hsl(var(--divine-gold)/0.3)] p-4 shadow-divine">
         <div className="relative rounded-2xl overflow-hidden aspect-square bg-muted">
-          {/* Outgoing image */}
-          <img
-            key={`out-${index}`}
-            src={DARSHANS[index].src}
-            alt={DARSHANS[index].name}
-            className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-700 ease-in-out ${
-              isTransitioning ? "opacity-0" : "opacity-100"
-            }`}
-          />
-          {/* Incoming image */}
-          {isTransitioning && (
-            <img
-              key={`in-${index}`}
-              src={DARSHANS[index].src}
-              alt={DARSHANS[index].name}
-              className="absolute inset-0 w-full h-full object-cover transition-opacity duration-700 ease-in-out opacity-100"
+          <AnimatePresence mode="wait" onExitComplete={() => setIsAnimating(false)}>
+            <motion.img
+              key={index}
+              src={darshan.src}
+              alt={darshan.name}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.8, ease: "easeInOut" }}
+              className="absolute inset-0 w-full h-full object-cover"
+              onAnimationComplete={() => setIsAnimating(false)}
             />
-          )}
+          </AnimatePresence>
           <div className="absolute inset-0 ring-1 ring-inset ring-[hsl(var(--divine-gold)/0.4)] rounded-2xl pointer-events-none" />
         </div>
 
@@ -135,7 +115,7 @@ const DailyDarshan = () => {
 
         <button
           onClick={goToNext}
-          disabled={isTransitioning}
+          disabled={isAnimating}
           className="mt-5 mx-auto flex items-center gap-2 px-5 py-2 rounded-full border border-[hsl(var(--divine-gold)/0.4)] text-[hsl(var(--divine-gold))] hover:bg-[hsl(var(--divine-gold)/0.1)] transition-all duration-300 text-sm disabled:opacity-40"
         >
           Next Darshan <ChevronRight size={14} />
