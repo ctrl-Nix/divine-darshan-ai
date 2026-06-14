@@ -126,6 +126,34 @@ const ChatInterface = ({ onBack }: { onBack: () => void }) => {
     return messages.filter((m) => m.role === "user").length;
   }, [messages]);
 
+  const handleExport = useCallback(() => {
+    const lines = messages
+      .filter((m) => m.id !== "welcome")
+      .map((m) => {
+        const label = m.role === "user" ? "You" : "Gita Guide";
+        return `${label}:\n${m.content}`;
+      })
+      .join("\n\n---\n\n");
+
+    const header = "🙏 Gita Guide Conversation 🙏\n";
+    const timestamp = new Date().toLocaleString();
+    const text = `${header}Exported: ${timestamp}\n\n${lines}`;
+
+    const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `gita-guide-${Date.now()}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+
+    toast.success(
+      chatLang === "hi"
+        ? "वार्तालाप निर्यात हो गया!"
+        : "Conversation exported!",
+    );
+  }, [messages, chatLang]);
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
