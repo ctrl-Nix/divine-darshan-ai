@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, ArrowLeft } from "lucide-react";
+import { Send, ArrowLeft, Share } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { toast } from "sonner";
 import VoiceButton from "./VoiceButton";
@@ -125,6 +125,34 @@ const ChatInterface = ({ onBack }: { onBack: () => void }) => {
   const exchangeCount = useMemo(() => {
     return messages.filter((m) => m.role === "user").length;
   }, [messages]);
+
+  const handleExport = useCallback(() => {
+    const lines = messages
+      .filter((m) => m.id !== "welcome")
+      .map((m) => {
+        const label = m.role === "user" ? "You" : "Gita Guide";
+        return `${label}:\n${m.content}`;
+      })
+      .join("\n\n---\n\n");
+
+    const header = "🙏 Gita Guide Conversation 🙏\n";
+    const timestamp = new Date().toLocaleString();
+    const text = `${header}Exported: ${timestamp}\n\n${lines}`;
+
+    const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `gita-guide-${Date.now()}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+
+    toast.success(
+      chatLang === "hi"
+        ? "वार्तालाप निर्यात हो गया!"
+        : "Conversation exported!",
+    );
+  }, [messages, chatLang]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -269,6 +297,15 @@ const ChatInterface = ({ onBack }: { onBack: () => void }) => {
             </motion.button>
           ))}
         </div>
+
+        <motion.button
+          whileTap={{ scale: 0.92 }}
+          onClick={handleExport}
+          className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+          title={chatLang === "hi" ? "वार्तालाप निर्यात करें" : "Export conversation"}
+        >
+          <Share size={18} />
+        </motion.button>
       </header>
 
       {/* Dhwaja Banner — unfurls once */}
