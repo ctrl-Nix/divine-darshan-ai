@@ -297,6 +297,15 @@ const ChatInterface = ({ onBack }: { onBack: () => void }) => {
             </motion.button>
           ))}
         </div>
+
+        <motion.button
+          whileTap={{ scale: 0.92 }}
+          onClick={handleExport}
+          className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+          title={chatLang === "hi" ? "वार्तालाप निर्यात करें" : "Export conversation"}
+        >
+          <Share size={18} />
+        </motion.button>
       </header>
 
       {/* Dhwaja Banner — unfurls once */}
